@@ -1,0 +1,1 @@
+{"ItemId": "", "NameOrder": "LINA%%TS%%D%%D1%%P%%E%%M%%S", "PartInfos": [{"ItemId": "", "NB": "Nut GB_T 808-1988 M12x1", "ProjectPath": "gb_standards\/nuts\/gb_808_88.prj", "Properties": {"D": "12", "D1": "10.917", "E": "18.900", "LINA": "Nut GB\/T 808 M12x1", "M": "3.000", "P": "1.000", "S": "17", "TS": "M12x1"}}], "ProjectPath": "gb_standards\/nuts\/gb_808_88.prj"}

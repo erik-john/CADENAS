@@ -1,0 +1,1 @@
+{"ItemId": "", "NameOrder": "LINA%%D%%D1%%K%%ARR", "PartInfos": [{"ItemId": "", "NB": "Locking collar GB_T 921-1986 91", "ProjectPath": "gb_standards\/circlips\/gb_921_86.prj", "Properties": {"ARR": "70", "D": "91", "D1": "1.4", "K": "9", "LINA": "Locking collar GB\/T 921 91"}}], "ProjectPath": "gb_standards\/circlips\/gb_921_86.prj"}

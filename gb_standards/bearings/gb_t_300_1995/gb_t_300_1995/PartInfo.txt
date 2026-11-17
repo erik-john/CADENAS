@@ -1,0 +1,1 @@
+{"ItemId": "", "NameOrder": "LINA%%SE%%BC%%D%%D1%%T%%B%%B1%%B2%%R1%%R2%%R3%%R4", "PartInfos": [], "ProjectPath": "gb_standards\/bearings\/gb_t_300_1995\/gb_t_300_1995.prj"}

@@ -1,0 +1,1 @@
+{"ItemId": "", "NameOrder": "LINA%%D%%L%%A", "PartInfos": [{"ItemId": "", "NB": "Pin GB_T 117-2000 8x85", "ProjectPath": "gb_standards\/pins\/gb_t_117_2000.prj", "Properties": {"A": "1.000", "D": "8.0", "L": "85", "LINA": "Pin GB\/T 117 8x85"}}], "ProjectPath": "gb_standards\/pins\/gb_t_117_2000.prj"}

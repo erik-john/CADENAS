@@ -1,0 +1,1 @@
+{"ItemId": "", "NameOrder": "LINA%%D%%D1%%S%%B%%H%%M", "PartInfos": [{"ItemId": "", "NB": "Washer GB_T 7244-1987 18", "ProjectPath": "gb_standards\/washers\/gb_7244_87.prj", "Properties": {"B": "5.800", "D": "18", "D1": "19.040", "H": "13.250", "LINA": "Washer GB\/T 7244 18", "M": "2.650", "S": "5.300"}}], "ProjectPath": "gb_standards\/washers\/gb_7244_87.prj"}

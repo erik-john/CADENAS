@@ -1,0 +1,1 @@
+{"ItemId": "", "NameOrder": "LINA%%TS%%D%%D3%%P%%L%%A%%B%%DK%%F%%K%%R%%RT%%X%%M", "PartInfos": [], "ProjectPath": "gb_standards\/screws\/gb_t_820_2000_z.prj"}

@@ -1,0 +1,1 @@
+{"ItemId": "", "NameOrder": "LINA%%D%%D4%%D5%%D6%%H2", "PartInfos": [{"ItemId": "", "NB": "Ring GB_T 902_2-2010 PF 10", "ProjectPath": "gb_standards\/studs\/gb_t_902_2_2010_pf.prj", "Properties": {"D": "10", "D4": "9.2", "D5": "15.0", "D6": "17.8", "H2": "6.5", "LINA": "Ring GB\/T 902.2 PF 10"}}], "ProjectPath": "gb_standards\/studs\/gb_t_902_2_2010_pf.prj"}

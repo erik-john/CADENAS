@@ -1,0 +1,1 @@
+{"ItemId": "", "NameOrder": "LINA%%TS%%D%%D3%%P%%L%%D1%%H", "PartInfos": [{"ItemId": "", "NB": "Bolt GB_T 32_2-1988 M12x90", "ProjectPath": "gb_standards\/bolts\/gb_32_2_88.prj", "Properties": {"D": "12", "D1": "3.200", "D3": "10.106", "H": "3.700", "L": "90", "LINA": "Bolt GB\/T 32.2 M12x90", "P": "1.750", "TS": "M12"}}], "ProjectPath": "gb_standards\/bolts\/gb_32_2_88.prj"}

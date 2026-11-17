@@ -1,0 +1,1 @@
+{"ItemId": "", "NameOrder": "LINA%%D%%L%%DK%%K%%R%%R1", "PartInfos": [{"ItemId": "", "NB": "Rivet GB_T 868-1986 8x34", "ProjectPath": "gb_standards\/rivets\/gb_868_86.prj", "Properties": {"D": "8.0", "DK": "14.75", "K": "4.24", "L": "34.0", "LINA": "Rivet GB\/T 868 8x34", "R": "0.3", "R1": "1.0"}}], "ProjectPath": "gb_standards\/rivets\/gb_868_86.prj"}

@@ -1,0 +1,1 @@
+{"ItemId": "", "NameOrder": "LINA%%D%%DK%%C%%E%%K%%R%%L", "PartInfos": [{"ItemId": "", "NB": "Pin GB_T 882-2008 A 18x50", "ProjectPath": "gb_standards\/pins\/gb_t_882_2008_a.prj", "Properties": {"C": "3.000", "D": "18", "DK": "28", "E": "1.6", "K": "5.0", "L": "50", "LINA": "Pin GB\/T 882 A 18x50", "R": "1.0"}}], "ProjectPath": "gb_standards\/pins\/gb_t_882_2008_a.prj"}

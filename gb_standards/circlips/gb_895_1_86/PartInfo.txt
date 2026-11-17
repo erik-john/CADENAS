@@ -1,0 +1,1 @@
+{"ItemId": "", "NameOrder": "LINA%%D0%%D%%D1%%B", "PartInfos": [{"ItemId": "", "NB": "Retaining ring GB_T 895_1-1986 40", "ProjectPath": "gb_standards\/circlips\/gb_895_1_86.prj", "Properties": {"B": "12", "D": "43.0", "D0": "40", "D1": "2.5", "LINA": "Retaining ring GB\/T 895.1 40"}}], "ProjectPath": "gb_standards\/circlips\/gb_895_1_86.prj"}

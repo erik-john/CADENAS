@@ -1,0 +1,1 @@
+{"ItemId": "", "NameOrder": "LINA%%TS%%D%%D3%%P%%B%%X%%L", "PartInfos": [{"ItemId": "", "NB": "Stud GB_T 901-1988 M14x140", "ProjectPath": "gb_standards\/studs\/gb_901_88.prj", "Properties": {"B": "40", "D": "14.0", "D3": "11.835", "L": "140", "LINA": "Stud GB\/T 901 M14x140", "P": "2.000", "TS": "M14", "X": "3.000"}}], "ProjectPath": "gb_standards\/studs\/gb_901_88.prj"}
