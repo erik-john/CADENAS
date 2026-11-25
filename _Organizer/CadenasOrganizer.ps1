@@ -1,4 +1,4 @@
-﻿# CADENAS NX File Organizer V3.2.9
+﻿# CADENAS NX File Organizer V3.2.10
 # Metadata-driven organizer. Uses PartInfo metadata (NB + ProjectPath) to map
 # flat Members .prt files to the exact CADENAS catalog component folder.
 # Safe behavior: preview/log matching first; never overwrite; ambiguous matches are skipped.
@@ -175,14 +175,14 @@ function Get-CatalogMappings {
 
 # Main window
 $script:MainForm = New-Object System.Windows.Forms.Form
-$script:MainForm.Text = 'CADENAS Organizer V3.2.9 - Standard Status Viewer'
+$script:MainForm.Text = 'CADENAS Organizer V3.2.10 - Standard Status Viewer'
 $script:MainForm.Size = New-Object System.Drawing.Size(900, 710)
 $script:MainForm.MinimumSize = New-Object System.Drawing.Size(900, 710)
 $script:MainForm.StartPosition = 'CenterScreen'
 $script:MainForm.Font = New-Object System.Drawing.Font('Segoe UI', 9)
 
 $title = New-Object System.Windows.Forms.Label
-$title.Text = 'CADENAS NX File Organizer V3.2.9'
+$title.Text = 'CADENAS NX File Organizer V3.2.10'
 $title.Font = New-Object System.Drawing.Font('Segoe UI', 15, [System.Drawing.FontStyle]::Bold)
 $title.Location = New-Object System.Drawing.Point(20, 16)
 $title.Size = New-Object System.Drawing.Size(800, 32)
@@ -225,7 +225,7 @@ $tgtBrowse.Anchor = 'Top,Right'
 $script:MainForm.Controls.Add($tgtBrowse)
 
 $hint = New-Object System.Windows.Forms.Label
-$hint.Text = 'V3.2.9: Standard Status counts catalog component images, including components without local folders.'
+$hint.Text = 'V3.2.10: Standard Status counts catalog component images, including components without local folders.'
 $hint.ForeColor = [System.Drawing.Color]::DimGray
 $hint.Location = New-Object System.Drawing.Point(22, 184)
 $hint.Size = New-Object System.Drawing.Size(840, 22)
@@ -612,12 +612,67 @@ $standardStatusButton.Add_Click({
         $percentLabel.Anchor = 'Top,Left,Right'
         $viewer.Controls.Add($percentLabel)
 
-        $progress = New-Object System.Windows.Forms.ProgressBar
+        # A custom-painted WinForms panel shows all three status proportions.
+        # Store a snapshot on the control so repainting never depends on the scan's scope.
+        $progress = New-Object System.Windows.Forms.Panel
         $progress.Location = New-Object System.Drawing.Point(20, 82)
         $progress.Size = New-Object System.Drawing.Size(790, 18)
-        $progress.Minimum = 0
-        $progress.Maximum = 100
         $progress.Anchor = 'Top,Left,Right'
+        $progress.Tag = [long[]]@($counts.Completed, $counts.Incompleted, $counts.Missing)
+        $progress.AccessibleName = 'Component status distribution'
+        $progress.AccessibleDescription = "Completed: $($counts.Completed); Incompleted: $($counts.Incompleted); Missing: $($counts.Missing)"
+        $progress.Add_Resize({ param($sender, $eventArgs) $sender.Invalidate() })
+        $progress.Add_Paint({
+            param($sender, $eventArgs)
+            $width = $sender.ClientSize.Width
+            $height = $sender.ClientSize.Height
+            if ($width -le 0 -or $height -le 0) { return }
+
+            $values = $sender.Tag
+            $total = [long]$values[0] + [long]$values[1] + [long]$values[2]
+            $graphics = $eventArgs.Graphics
+            $graphicsState = $graphics.Save()
+            $outline = New-Object System.Drawing.Drawing2D.GraphicsPath
+            $brush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(229, 231, 235))
+            try {
+                # Rounded outer corners; status segments meet without gaps.
+                $diameter = [int][Math]::Min(12, [Math]::Min($width, $height))
+                if ($diameter -gt 1) {
+                    $outline.AddArc(0, 0, $diameter, $diameter, 180, 90)
+                    $outline.AddArc(($width - $diameter), 0, $diameter, $diameter, 270, 90)
+                    $outline.AddArc(($width - $diameter), ($height - $diameter), $diameter, $diameter, 0, 90)
+                    $outline.AddArc(0, ($height - $diameter), $diameter, $diameter, 90, 90)
+                    $outline.CloseFigure()
+                } else {
+                    $outline.AddRectangle((New-Object System.Drawing.Rectangle(0, 0, $width, $height)))
+                }
+                $graphics.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+                $graphics.FillPath($brush, $outline)
+                $graphics.SetClip($outline, [System.Drawing.Drawing2D.CombineMode]::Intersect)
+                if ($total -gt 0) {
+                    $colors = @(
+                        [System.Drawing.Color]::FromArgb(22, 163, 74)
+                        [System.Drawing.Color]::FromArgb(156, 163, 175)
+                        [System.Drawing.Color]::FromArgb(220, 38, 38)
+                    )
+                    $left = 0
+                    $cumulative = [long]0
+                    for ($i = 0; $i -lt 3; $i++) {
+                        $cumulative += [long]$values[$i]
+                        $right = [int][Math]::Round(($cumulative / [double]$total) * $width)
+                        if ($right -gt $left) {
+                            $brush.Color = $colors[$i]
+                            $graphics.FillRectangle($brush, $left, 0, ($right - $left), $height)
+                        }
+                        $left = $right
+                    }
+                }
+            } finally {
+                $graphics.Restore($graphicsState)
+                $brush.Dispose()
+                $outline.Dispose()
+            }
+        })
         $viewer.Controls.Add($progress)
 
         $partsLabel = New-Object System.Windows.Forms.Label
@@ -626,11 +681,27 @@ $standardStatusButton.Add_Click({
         $partsLabel.Anchor = 'Top,Left,Right'
         $viewer.Controls.Add($partsLabel)
 
-        $countsLabel = New-Object System.Windows.Forms.Label
-        $countsLabel.Location = New-Object System.Drawing.Point(20, 135)
-        $countsLabel.Size = New-Object System.Drawing.Size(650, 24)
-        $countsLabel.Anchor = 'Top,Left,Right'
-        $viewer.Controls.Add($countsLabel)
+        # Color-coded legend for the segmented bar, in the existing summary row.
+        $countsLegend = New-Object System.Windows.Forms.TableLayoutPanel
+        $countsLegend.Location = New-Object System.Drawing.Point(20, 135)
+        $countsLegend.Size = New-Object System.Drawing.Size(790, 24)
+        $countsLegend.Anchor = 'Top,Left,Right'
+        $countsLegend.ColumnCount = 3
+        $countsLegend.RowCount = 1
+        $countsLegend.GrowStyle = 'FixedSize'
+        $legendTexts = @("Completed: $($counts.Completed)", "Incompleted: $($counts.Incompleted)", "Missing: $($counts.Missing)")
+        $legendColors = @([System.Drawing.Color]::ForestGreen, [System.Drawing.Color]::DimGray, [System.Drawing.Color]::Firebrick)
+        for ($column = 0; $column -lt 3; $column++) {
+            [void]$countsLegend.ColumnStyles.Add((New-Object System.Windows.Forms.ColumnStyle([System.Windows.Forms.SizeType]::Percent, [single](100.0 / 3))))
+            $legendLabel = New-Object System.Windows.Forms.Label
+            $legendLabel.Text = $legendTexts[$column]
+            $legendLabel.ForeColor = $legendColors[$column]
+            $legendLabel.Dock = 'Fill'
+            $legendLabel.TextAlign = 'MiddleLeft'
+            $legendLabel.Margin = New-Object System.Windows.Forms.Padding(0)
+            $countsLegend.Controls.Add($legendLabel, $column, 0)
+        }
+        $viewer.Controls.Add($countsLegend)
 
         $tree = New-Object System.Windows.Forms.TreeView
         $tree.Location = New-Object System.Drawing.Point(20, 170)
@@ -654,10 +725,8 @@ $standardStatusButton.Add_Click({
         } else {
             $percentage = 0
         }
-        $progress.Value = $percentage
         $percentLabel.Text = "Completion: $percentage%"
         $partsLabel.Text = "$($counts.Completed) in $($counts.Total) parts"
-        $countsLabel.Text = "Completed: $($counts.Completed)    Incompleted: $($counts.Incompleted)    Missing: $($counts.Missing)"
         # Find the exact TreeView node for the current Target Category by its
         # full directory path. Then expand the complete subtree beneath it.
         # This avoids relying on relative path traversal or displayed node text.
@@ -839,5 +908,5 @@ $processButton.Add_Click({
         $processButton.Enabled = $true
     }
 })
-$script:MainForm.Add_Shown({ Write-Log 'Ready. V3.2.9 counts component preview images (Completed, Incompleted, Missing) and groups CADENAS split files (_PARTn and -n) with their base component before matching PartInfo NB metadata.' 'Blue' })
+$script:MainForm.Add_Shown({ Write-Log 'Ready. V3.2.10 counts component preview images (Completed, Incompleted, Missing) and groups CADENAS split files (_PARTn and -n) with their base component before matching PartInfo NB metadata.' 'Blue' })
 [void]$script:MainForm.ShowDialog()
