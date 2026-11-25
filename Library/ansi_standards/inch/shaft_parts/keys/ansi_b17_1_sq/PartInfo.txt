@@ -1,0 +1,1 @@
+{"ItemId": "", "NameOrder": "LINA%%W%%L%%OVER%%TO", "PartInfos": [{"ItemId": "", "NB": "Key ANSI B17_1 PSK 1x4", "ProjectPath": "ansi_standards\/inch\/shaft_parts\/keys\/ansi_b17_1_sq.prj", "Properties": {"L": "4", "LINA": "Key ANSI B17.1 PSK 1x4", "OVER": "3 3\/4", "TO": "4 1\/2", "W": "1"}}], "ProjectPath": "ansi_standards\/inch\/shaft_parts\/keys\/ansi_b17_1_sq.prj"}

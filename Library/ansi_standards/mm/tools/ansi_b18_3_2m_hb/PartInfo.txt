@@ -1,0 +1,1 @@
+{"ItemId": "", "NameOrder": "LINA%%W%%Y%%L", "PartInfos": [{"ItemId": "", "NB": "Hexagon Bit ANSI B18_3_2M HB27x100", "ProjectPath": "ansi_standards\/mm\/tools\/ansi_b18_3_2m_hb.prj", "Properties": {"L": "100", "LINA": "Hexagon Bit ANSI B18.3.2M HB27x100", "W": "27", "Y": "30.969"}}], "ProjectPath": "ansi_standards\/mm\/tools\/ansi_b18_3_2m_hb.prj"}
