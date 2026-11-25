@@ -1,4 +1,4 @@
-﻿# CADENAS NX File Organizer V3.2.12
+﻿# CADENAS NX File Organizer V3.2.13
 # Metadata-driven organizer. Uses PartInfo metadata (NB + ProjectPath) to map
 # flat Members .prt files to the exact CADENAS catalog component folder.
 # Safe behavior: preview/log matching first; never overwrite; ambiguous matches are skipped.
@@ -175,14 +175,14 @@ function Get-CatalogMappings {
 
 # Main window
 $script:MainForm = New-Object System.Windows.Forms.Form
-$script:MainForm.Text = 'CADENAS Organizer V3.2.12 - Standard Status Viewer'
+$script:MainForm.Text = 'CADENAS Organizer V3.2.13 - Standard Status Viewer'
 $script:MainForm.Size = New-Object System.Drawing.Size(900, 710)
 $script:MainForm.MinimumSize = New-Object System.Drawing.Size(900, 710)
 $script:MainForm.StartPosition = 'CenterScreen'
 $script:MainForm.Font = New-Object System.Drawing.Font('Segoe UI', 9)
 
 $title = New-Object System.Windows.Forms.Label
-$title.Text = 'CADENAS NX File Organizer V3.2.12'
+$title.Text = 'CADENAS NX File Organizer V3.2.13'
 $title.Font = New-Object System.Drawing.Font('Segoe UI', 15, [System.Drawing.FontStyle]::Bold)
 $title.Location = New-Object System.Drawing.Point(20, 16)
 $title.Size = New-Object System.Drawing.Size(800, 32)
@@ -225,7 +225,7 @@ $tgtBrowse.Anchor = 'Top,Right'
 $script:MainForm.Controls.Add($tgtBrowse)
 
 $hint = New-Object System.Windows.Forms.Label
-$hint.Text = 'V3.2.12: Standard Status counts catalog component images, including components without local folders.'
+$hint.Text = 'V3.2.13: Standard Status counts catalog component images, including components without local folders.'
 $hint.ForeColor = [System.Drawing.Color]::DimGray
 $hint.Location = New-Object System.Drawing.Point(22, 184)
 $hint.Size = New-Object System.Drawing.Size(840, 22)
@@ -582,6 +582,90 @@ function Expand-UnfinishedStandardBranches {
     }
 }
 
+# Apply a fresh, read-only inventory to the existing Standard Status window.
+# Both initial display and manual refresh use the same rendering and expansion rules.
+function Set-StandardStatusViewerInventory {
+    param([pscustomobject]$State, [pscustomobject]$Inventory)
+
+    $tree = $State.Tree
+    $standardRoot = $State.StandardRoot
+    $counts = $Inventory.Counts
+    # Build the replacement tree before removing the previous one.
+    $rootNode = New-Object System.Windows.Forms.TreeNode($Inventory.Name)
+    $rootNode.Name = $Inventory.FullPath
+    $rootNode.ForeColor = [System.Drawing.Color]::DarkSlateBlue
+    foreach ($item in $Inventory.Children) {
+        Add-StandardTreeNode -ParentNode $rootNode -Item $item -ShowBranchCounts
+    }
+
+    if ($counts.Total -gt 0) {
+        $percentage = [int][Math]::Round(($counts.Completed / [double]$counts.Total) * 100)
+    } else {
+        $percentage = 0
+    }
+
+    $tree.BeginUpdate()
+    try {
+        $tree.Nodes.Clear()
+        [void]$tree.Nodes.Add($rootNode)
+        # Find the exact TreeView node for the current Target Category by its
+        # full directory path. Then expand only unfinished branches beneath it.
+        # This avoids relying on relative path traversal or displayed node text.
+        $tree.CollapseAll()
+        $targetCategoryPath = $State.TargetCategoryPath
+        $targetNode = $null
+
+        if (-not [string]::IsNullOrWhiteSpace($targetCategoryPath) -and
+            (Test-Path -LiteralPath $targetCategoryPath -PathType Container)) {
+            $targetFullPath = [System.IO.Path]::GetFullPath($targetCategoryPath).TrimEnd([char[]]@('\', '/'))
+            $standardFullPath = [System.IO.Path]::GetFullPath($standardRoot).TrimEnd([char[]]@('\', '/'))
+
+            if ($targetFullPath.Equals($standardFullPath, [System.StringComparison]::OrdinalIgnoreCase) -or
+                $targetFullPath.StartsWith($standardFullPath + [System.IO.Path]::DirectorySeparatorChar, [System.StringComparison]::OrdinalIgnoreCase)) {
+                $nodeStack = New-Object 'System.Collections.Generic.Stack[System.Windows.Forms.TreeNode]'
+                $nodeStack.Push($rootNode)
+                while ($nodeStack.Count -gt 0) {
+                    $candidate = $nodeStack.Pop()
+                    if (-not [string]::IsNullOrWhiteSpace($candidate.Name)) {
+                        $candidatePath = [System.IO.Path]::GetFullPath($candidate.Name).TrimEnd([char[]]@('\', '/'))
+                        if ($candidatePath.Equals($targetFullPath, [System.StringComparison]::OrdinalIgnoreCase)) {
+                            $targetNode = $candidate
+                            break
+                        }
+                    }
+                    foreach ($childNode in $candidate.Nodes) {
+                        $nodeStack.Push($childNode)
+                    }
+                }
+            }
+        }
+
+        if ($null -ne $targetNode) {
+            Expand-UnfinishedStandardBranches -Node $targetNode
+            $tree.SelectedNode = $targetNode
+            $targetNode.EnsureVisible()
+        } else {
+            $rootNode.Expand()
+            $tree.SelectedNode = $rootNode
+        }
+
+        $State.RootNode = $rootNode
+        $State.TargetNode = $targetNode
+    } finally {
+        $tree.EndUpdate()
+    }
+
+    $State.PercentLabel.Text = "Completion: $percentage%"
+    $State.PartsLabel.Text = "$($counts.Completed) in $($counts.Total) parts"
+    $State.Progress.Tag = [long[]]@($counts.Completed, $counts.Incompleted, $counts.Missing)
+    $State.Progress.AccessibleDescription = "Completed: $($counts.Completed); Incompleted: $($counts.Incompleted); Missing: $($counts.Missing)"
+    $State.Progress.Invalidate()
+    $State.LegendLabels[0].Text = "Completed: $($counts.Completed)"
+    $State.LegendLabels[1].Text = "Incompleted: $($counts.Incompleted)"
+    $State.LegendLabels[2].Text = "Missing: $($counts.Missing)"
+    $State.Percentage = $percentage
+}
+
 $standardStatusButton.Add_Click({
     $sourceMembersPath = $sourceText.Text.Trim()
     if ([string]::IsNullOrWhiteSpace($sourceMembersPath) -or
@@ -621,7 +705,7 @@ $standardStatusButton.Add_Click({
         $heading.Text = "Standard: $($rootDirectory.Name)"
         $heading.Font = New-Object System.Drawing.Font('Segoe UI', 13, [System.Drawing.FontStyle]::Bold)
         $heading.Location = New-Object System.Drawing.Point(18, 15)
-        $heading.Size = New-Object System.Drawing.Size(790, 28)
+        $heading.Size = New-Object System.Drawing.Size(745, 28)
         $heading.Anchor = 'Top,Left,Right'
         $viewer.Controls.Add($heading)
 
@@ -711,6 +795,7 @@ $standardStatusButton.Add_Click({
         $countsLegend.GrowStyle = 'FixedSize'
         $legendTexts = @("Completed: $($counts.Completed)", "Incompleted: $($counts.Incompleted)", "Missing: $($counts.Missing)")
         $legendColors = @([System.Drawing.Color]::ForestGreen, [System.Drawing.Color]::DimGray, [System.Drawing.Color]::Firebrick)
+        $legendLabels = New-Object 'System.Collections.Generic.List[System.Windows.Forms.Label]'
         for ($column = 0; $column -lt 3; $column++) {
             [void]$countsLegend.ColumnStyles.Add((New-Object System.Windows.Forms.ColumnStyle([System.Windows.Forms.SizeType]::Percent, [single](100.0 / 3))))
             $legendLabel = New-Object System.Windows.Forms.Label
@@ -720,6 +805,7 @@ $standardStatusButton.Add_Click({
             $legendLabel.TextAlign = 'MiddleLeft'
             $legendLabel.Margin = New-Object System.Windows.Forms.Padding(0)
             $countsLegend.Controls.Add($legendLabel, $column, 0)
+            $legendLabels.Add($legendLabel)
         }
         $viewer.Controls.Add($countsLegend)
 
@@ -731,79 +817,98 @@ $standardStatusButton.Add_Click({
         $tree.Font = New-Object System.Drawing.Font('Segoe UI', 9)
         $viewer.Controls.Add($tree)
 
-        $rootNode = New-Object System.Windows.Forms.TreeNode($rootDirectory.Name)
-        $rootNode.Name = $rootDirectory.FullName
-        $rootNode.ForeColor = [System.Drawing.Color]::DarkSlateBlue
-        [void]$tree.Nodes.Add($rootNode)
+        # Icon-only refresh button; no additional image asset is required.
+        $refreshButton = New-Object System.Windows.Forms.Button
+        $refreshButton.Text = [string][char]0x21BB
+        $refreshButton.Font = New-Object System.Drawing.Font('Segoe UI Symbol', 14)
+        $refreshButton.Location = New-Object System.Drawing.Point(778, 12)
+        $refreshButton.Size = New-Object System.Drawing.Size(32, 32)
+        $refreshButton.Anchor = 'Top,Right'
+        $refreshButton.AccessibleName = 'Refresh Standard Status'
+        $refreshButton.AccessibleDescription = 'Rescan the current catalog and update all component statuses.'
+        $viewer.Controls.Add($refreshButton)
+        $refreshToolTip = New-Object System.Windows.Forms.ToolTip
+        $refreshToolTip.SetToolTip($refreshButton, 'Refresh Standard Status')
 
-        foreach ($item in $inventory.Children) {
-            Add-StandardTreeNode -ParentNode $rootNode -Item $item -ShowBranchCounts
+        # Explicit state avoids relying on transient PowerShell event-handler scope.
+        $viewerState = [pscustomobject]@{
+            Viewer = $viewer; Tree = $tree; StandardRoot = $standardRoot
+            TargetCategoryPath = $targetText.Text.Trim()
+            PercentLabel = $percentLabel; PartsLabel = $partsLabel
+            Progress = $progress; LegendLabels = $legendLabels
+            StatusLabel = $statusLabel; SourceMembersPath = $sourceMembersPath
+            RootNode = $null; TargetNode = $null; Percentage = 0; Busy = $false
         }
+        $viewer.Tag = $viewerState
+        $refreshButton.Tag = $viewerState
+        Set-StandardStatusViewerInventory -State $viewerState -Inventory $inventory
 
-        if ($counts.Total -gt 0) {
-            $percentage = [int][Math]::Round(($counts.Completed / [double]$counts.Total) * 100)
-        } else {
-            $percentage = 0
-        }
-        $percentLabel.Text = "Completion: $percentage%"
-        $partsLabel.Text = "$($counts.Completed) in $($counts.Total) parts"
-        # Find the exact TreeView node for the current Target Category by its
-        # full directory path. Then expand only unfinished branches beneath it.
-        # This avoids relying on relative path traversal or displayed node text.
-        $tree.CollapseAll()
-        $targetCategoryPath = $targetText.Text.Trim()
-        $targetNode = $null
-
-        if (-not [string]::IsNullOrWhiteSpace($targetCategoryPath) -and
-            (Test-Path -LiteralPath $targetCategoryPath -PathType Container)) {
-            $targetFullPath = [System.IO.Path]::GetFullPath($targetCategoryPath).TrimEnd([char[]]@('\', '/'))
-            $standardFullPath = [System.IO.Path]::GetFullPath($standardRoot).TrimEnd([char[]]@('\', '/'))
-
-            if ($targetFullPath.Equals($standardFullPath, [System.StringComparison]::OrdinalIgnoreCase) -or
-                $targetFullPath.StartsWith($standardFullPath + [System.IO.Path]::DirectorySeparatorChar, [System.StringComparison]::OrdinalIgnoreCase)) {
-                $nodeStack = New-Object 'System.Collections.Generic.Stack[System.Windows.Forms.TreeNode]'
-                $nodeStack.Push($rootNode)
-                while ($nodeStack.Count -gt 0) {
-                    $candidate = $nodeStack.Pop()
-                    if (-not [string]::IsNullOrWhiteSpace($candidate.Name)) {
-                        $candidatePath = [System.IO.Path]::GetFullPath($candidate.Name).TrimEnd([char[]]@('\', '/'))
-                        if ($candidatePath.Equals($targetFullPath, [System.StringComparison]::OrdinalIgnoreCase)) {
-                            $targetNode = $candidate
-                            break
-                        }
-                    }
-                    foreach ($childNode in $candidate.Nodes) {
-                        $nodeStack.Push($childNode)
-                    }
-                }
-            }
-        }
-
-        if ($null -ne $targetNode) {
-            Expand-UnfinishedStandardBranches -Node $targetNode
-            $tree.SelectedNode = $targetNode
-            $targetNode.EnsureVisible()
-        } else {
-            $rootNode.Expand()
-            $tree.SelectedNode = $rootNode
-        }
-
-        # Repeat expansion after the form is shown so WinForms renders the
-        # expanded branch reliably on first display.
+        # Repeat the initial expansion after the dialog has been displayed.
         $viewer.Add_Shown({
-            if ($null -ne $targetNode) {
-                Expand-UnfinishedStandardBranches -Node $targetNode
-                $tree.SelectedNode = $targetNode
-                $targetNode.EnsureVisible()
+            param($sender, $eventArgs)
+            $state = $sender.Tag
+            if ($null -ne $state.TargetNode) {
+                Expand-UnfinishedStandardBranches -Node $state.TargetNode
+                $state.Tree.SelectedNode = $state.TargetNode
+                $state.TargetNode.EnsureVisible()
             } else {
-                $rootNode.Expand()
+                $state.RootNode.Expand()
             }
-            $tree.Focus()
+            [void]$state.Tree.Focus()
+        })
+        # Logging pumps the message queue, so prevent closing during a refresh.
+        $viewer.Add_FormClosing({
+            param($sender, $eventArgs)
+            if ($sender.Tag.Busy) { $eventArgs.Cancel = $true }
+        })
+        $refreshButton.Add_Click({
+            param($sender, $eventArgs)
+            $state = $sender.Tag
+            if ($state.Busy) { return }
+            $state.Busy = $true
+            $sender.Enabled = $false
+            $state.Viewer.UseWaitCursor = $true
+            $state.StatusLabel.Text = 'Refreshing Standard Status...'
+            try {
+                # Scan the same standard from disk; do not move or modify files.
+                $warnings = New-Object 'System.Collections.Generic.List[string]'
+                $newInventory = Get-StandardCatalogInventory -CatalogPath $state.StandardRoot -Warnings $warnings
+                # A failed filesystem scan never clears the previous displayed tree.
+                Set-StandardStatusViewerInventory -State $state -Inventory $newInventory
+                $newCounts = $newInventory.Counts
+                foreach ($warning in $warnings) { Write-Log "Standard Status refresh: $warning" 'DarkOrange' }
+                if ($newCounts.Total -eq 0) {
+                    Write-Log 'No component preview images were found in the local catalog. The full online catalog total is not known.' 'DarkOrange'
+                }
+                $state.StatusLabel.Text = "Standard scan complete - $($newCounts.Completed) in $($newCounts.Total) parts ($($state.Percentage)%)"
+                Write-Log "Standard Status refreshed: $($state.StandardRoot) - Completed $($newCounts.Completed); Incompleted $($newCounts.Incompleted); Missing $($newCounts.Missing); Total component images $($newCounts.Total); Completion $($state.Percentage)%." 'Blue'
+            } catch {
+                $refreshError = $_
+                $state.StatusLabel.Text = 'Standard refresh failed - see log'
+                Write-Log "Standard Status refresh failed: $($refreshError.Exception.Message)" 'Red'
+                if ($refreshError.InvocationInfo.PositionMessage) {
+                    Write-Log "Refresh error location: $($refreshError.InvocationInfo.PositionMessage)" 'Red'
+                }
+                if ($refreshError.ScriptStackTrace) {
+                    Write-Log "Refresh call stack: $($refreshError.ScriptStackTrace)" 'Red'
+                }
+                [void][System.Windows.Forms.MessageBox]::Show($state.Viewer, $refreshError.Exception.Message, 'Standard Status refresh failed')
+            } finally {
+                $state.Viewer.UseWaitCursor = $false
+                $sender.Enabled = $true
+                $state.Busy = $false
+            }
         })
 
+        $percentage = $viewerState.Percentage
         $statusLabel.Text = "Standard scan complete - $($counts.Completed) in $($counts.Total) parts ($percentage%)"
         Write-Log "Standard Status (real catalog; source parameter: $sourceMembersPath): $($rootDirectory.FullName) - Completed $($counts.Completed); Incompleted $($counts.Incompleted); Missing $($counts.Missing); Total component images $($counts.Total); Completion $percentage%." 'Blue'
-        [void]$viewer.ShowDialog($script:MainForm)
+        try {
+            [void]$viewer.ShowDialog($script:MainForm)
+        } finally {
+            $refreshToolTip.Dispose()
+            $viewer.Dispose()
+        }
     } catch {
         $statusLabel.Text = 'Standard scan failed - see log'
         $scanError = $_
@@ -928,5 +1033,5 @@ $processButton.Add_Click({
         $processButton.Enabled = $true
     }
 })
-$script:MainForm.Add_Shown({ Write-Log 'Ready. V3.2.12 counts component preview images (Completed, Incompleted, Missing) and groups CADENAS split files (_PARTn and -n) with their base component before matching PartInfo NB metadata.' 'Blue' })
+$script:MainForm.Add_Shown({ Write-Log 'Ready. V3.2.13 counts component preview images (Completed, Incompleted, Missing) and groups CADENAS split files (_PARTn and -n) with their base component before matching PartInfo NB metadata.' 'Blue' })
 [void]$script:MainForm.ShowDialog()
