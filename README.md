@@ -2,7 +2,14 @@
 
 ## Description
 
-A Windows desktop utility for organizing Siemens NX sample components downloaded from the CADENAS library and tracking the completion of local standard component catalogs. Current version: **V3.2.10**.
+![Version](https://img.shields.io/badge/version-3.2.10-blue)
+![Platform](https://img.shields.io/badge/platform-Windows-0078D4)
+![PowerShell](https://img.shields.io/badge/PowerShell-Windows%205.1-5391FE)
+![Siemens NX](https://img.shields.io/badge/Siemens%20NX-1855%20%7C%202506-009999)
+
+A Windows desktop utility for organizing sample components downloaded from the **CADENAS library in Siemens NX** and monitoring the completion of local standard component catalogs.
+
+The project helps engineers build and maintain a structured NX standard parts library without manually locating the destination folder for each downloaded `.prt` file. The organizer moves matched files into their corresponding catalog folders and provides a visual overview of downloaded, incomplete and missing components.
 
 ## Screenshot
 
