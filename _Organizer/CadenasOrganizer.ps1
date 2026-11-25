@@ -1,4 +1,4 @@
-# CADENAS NX File Organizer V3.2.3
+﻿# CADENAS NX File Organizer V3.2.9
 # Metadata-driven organizer. Uses PartInfo metadata (NB + ProjectPath) to map
 # flat Members .prt files to the exact CADENAS catalog component folder.
 # Safe behavior: preview/log matching first; never overwrite; ambiguous matches are skipped.
@@ -175,14 +175,14 @@ function Get-CatalogMappings {
 
 # Main window
 $script:MainForm = New-Object System.Windows.Forms.Form
-$script:MainForm.Text = 'CADENAS Organizer V3.2.4 - Standard Status Viewer'
+$script:MainForm.Text = 'CADENAS Organizer V3.2.9 - Standard Status Viewer'
 $script:MainForm.Size = New-Object System.Drawing.Size(900, 710)
 $script:MainForm.MinimumSize = New-Object System.Drawing.Size(900, 710)
 $script:MainForm.StartPosition = 'CenterScreen'
 $script:MainForm.Font = New-Object System.Drawing.Font('Segoe UI', 9)
 
 $title = New-Object System.Windows.Forms.Label
-$title.Text = 'CADENAS NX File Organizer V3.2.3'
+$title.Text = 'CADENAS NX File Organizer V3.2.9'
 $title.Font = New-Object System.Drawing.Font('Segoe UI', 15, [System.Drawing.FontStyle]::Bold)
 $title.Location = New-Object System.Drawing.Point(20, 16)
 $title.Size = New-Object System.Drawing.Size(800, 32)
@@ -225,7 +225,7 @@ $tgtBrowse.Anchor = 'Top,Right'
 $script:MainForm.Controls.Add($tgtBrowse)
 
 $hint = New-Object System.Windows.Forms.Label
-$hint.Text = 'V3.2.4: Standard Status finds the target category by full path and expands its complete subtree.'
+$hint.Text = 'V3.2.9: Standard Status counts catalog component images, including components without local folders.'
 $hint.ForeColor = [System.Drawing.Color]::DimGray
 $hint.Location = New-Object System.Drawing.Point(22, 184)
 $hint.Size = New-Object System.Drawing.Size(840, 22)
@@ -391,109 +391,175 @@ function Resolve-StandardCatalogRoot {
     throw "Could not find the real '$standardName' catalog folder under '$($libraryRoot.FullName)'. The Members folder was excluded from the search."
 }
 
-# Standard Status Viewer:
-# Each leaf directory represents one part. A matching TXT + PS3 + PRT
-# basename is completed; matching TXT + PS3 without matching PRT is missing;
-# all other leaf directories are incomplete. Parent directories are containers.
+# Standard Status inventory (read-only; independent of WinForms).
+# Group sibling preview images by exact basename, case-insensitively.
+# One image = one component; two images = category, never a part.
+# The component folder is checked directly, not traversed as a category.
 function Get-LeafPartStatus {
     param([string]$FolderPath)
 
-    $files = @(Get-ChildItem -LiteralPath $FolderPath -File -ErrorAction Stop)
-    $txtBases = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
-    $ps3Bases = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
-    $prtBases = New-Object 'System.Collections.Generic.HashSet[string]' ([System.StringComparer]::OrdinalIgnoreCase)
-
-    foreach ($file in $files) {
-        $base = $file.BaseName
-        switch -Regex ($file.Extension) {
-            '(?i)^\.txt$' { [void]$txtBases.Add($base); break }
-            '(?i)^\.ps3$' { [void]$ps3Bases.Add($base); break }
-            '(?i)^\.prt$' { [void]$prtBases.Add($base); break }
-        }
+    if ([string]::IsNullOrWhiteSpace($FolderPath)) {
+        throw 'Component status scan received an empty folder path.'
     }
-
-    foreach ($base in $txtBases) {
-        if ($ps3Bases.Contains($base) -and $prtBases.Contains($base)) {
-            return 'Completed'
-        }
+    if (-not [System.IO.Directory]::Exists($FolderPath)) {
+        return 'Missing'
     }
-    foreach ($base in $txtBases) {
-        if ($ps3Bases.Contains($base)) {
-            return 'Missing'
+    try {
+        foreach ($filePath in [System.IO.Directory]::GetFiles($FolderPath)) {
+            if ([System.IO.Path]::GetExtension($filePath) -ieq '.prt') {
+                return 'Completed'
+            }
         }
+    } catch {
+        throw "Cannot scan component folder '$FolderPath': $($_.Exception.Message)"
     }
-    return 'Incomplete'
+    return 'Incompleted'
 }
 
-function Get-StandardBranchCounts {
-    param([System.IO.DirectoryInfo]$Directory)
+function Get-StandardCatalogInventory {
+    param(
+        [string]$CatalogPath,
+        [System.Collections.Generic.List[string]]$Warnings
+    )
 
-    $branchCounts = @{ Completed = 0; Missing = 0; Incomplete = 0; Total = 0 }
-    $childDirectories = @(Get-ChildItem -LiteralPath $Directory.FullName -Directory -ErrorAction Stop)
-
-    if ($childDirectories.Count -eq 0) {
-        $status = Get-LeafPartStatus -FolderPath $Directory.FullName
-        $branchCounts.Total++
-        $branchCounts[$status]++
-        return $branchCounts
+    # Use explicit filesystem paths throughout recursion, not DirectoryInfo
+    # arguments that may be empty or converted by PowerShell parameter binding.
+    if ([string]::IsNullOrWhiteSpace($CatalogPath)) {
+        throw 'Catalog inventory received an empty directory path.'
+    }
+    $CatalogPath = [System.IO.Path]::GetFullPath($CatalogPath)
+    $catalogDirectory = New-Object System.IO.DirectoryInfo -ArgumentList $CatalogPath
+    if (-not $catalogDirectory.Exists) {
+        throw "Catalog folder does not exist or cannot be accessed: '$CatalogPath'"
     }
 
-    foreach ($childDirectory in $childDirectories) {
-        $childCounts = Get-StandardBranchCounts -Directory $childDirectory
-        $branchCounts.Completed += $childCounts.Completed
-        $branchCounts.Missing += $childCounts.Missing
-        $branchCounts.Incomplete += $childCounts.Incomplete
-        $branchCounts.Total += $childCounts.Total
+    $counts = @{ Completed = 0; Incompleted = 0; Missing = 0; Total = 0 }
+    $children = New-Object 'System.Collections.Generic.List[object]'
+    $imageCounts = @{}
+    $directories = @{}
+    $linkedDirectories = @{}
+    $extensions = @('.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tif', '.tiff', '.webp', '.ico')
+
+    # Read a concrete directory via .NET, independent of the PowerShell
+    # filesystem provider. Empty folders yield an empty array, not a null path.
+    try {
+        $entries = $catalogDirectory.GetFileSystemInfos()
+    } catch {
+        throw "Cannot enumerate catalog folder '$CatalogPath': $($_.Exception.Message)"
+    }
+    foreach ($entry in $entries) {
+        if ($null -eq $entry) { continue }
+        # Preserve the original non-hidden catalog inventory scan.
+        if ($entry.Attributes -band ([IO.FileAttributes]::Hidden -bor [IO.FileAttributes]::System)) { continue }
+        if ($entry -is [System.IO.DirectoryInfo]) {
+            $directories[$entry.Name] = [string]$entry.FullName
+            if ($entry.Attributes -band [IO.FileAttributes]::ReparsePoint) {
+                $linkedDirectories[$entry.Name] = $true
+            }
+        } elseif ($extensions -contains $entry.Extension) {
+            $name = [System.IO.Path]::GetFileNameWithoutExtension($entry.Name)
+            if ([string]::IsNullOrWhiteSpace($name)) { continue }
+            if (-not $imageCounts.ContainsKey($name)) { $imageCounts[$name] = 0 }
+            $imageCounts[$name]++
+        }
     }
 
-    return $branchCounts
+    # Catalog names such as "keys" can shadow Hashtable.Keys in PowerShell.
+    # Enumerate actual entries so a filename cannot change the collection being scanned.
+    foreach ($imageEntry in ($imageCounts.GetEnumerator() | Sort-Object -Property Key)) {
+        $name = [string]$imageEntry.Key
+        $itemPath = [System.IO.Path]::Combine($CatalogPath, [string]$name)
+        if ($directories.ContainsKey($name)) {
+            $itemPath = [string]$directories[$name]
+        }
+        $imageCount = [int]$imageEntry.Value
+        if ($imageCount -eq 1) {
+            $status = Get-LeafPartStatus -FolderPath $itemPath
+            $partCounts = @{ Completed = 0; Incompleted = 0; Missing = 0; Total = 1 }
+            $partCounts[$status] = 1
+            $children.Add([pscustomobject]@{
+                Name = $name; FullPath = $itemPath; Kind = 'Component'
+                Status = $status; Counts = $partCounts; Children = @()
+            })
+        } else {
+            if ($imageCount -gt 2) {
+                $Warnings.Add("Ambiguous preview group ($imageCount images): $itemPath. Treated as a category, not a component.")
+            }
+            if ($directories.ContainsKey($name) -and -not $linkedDirectories.ContainsKey($name)) {
+                $branch = Get-StandardCatalogInventory -CatalogPath $itemPath -Warnings $Warnings
+                $children.Add($branch)
+            } else {
+                $Warnings.Add("Category folder missing or not traversable: $itemPath. Its descendants cannot be counted.")
+                $children.Add([pscustomobject]@{
+                    Name = $name; FullPath = $itemPath; Kind = 'Category'
+                    Status = $null; Counts = @{ Completed = 0; Incompleted = 0; Missing = 0; Total = 0 }; Children = @()
+                })
+            }
+        }
+    }
+
+    # Search structural folders that have no preview at their parent.
+    foreach ($directoryEntry in ($directories.GetEnumerator() | Sort-Object -Property Key)) {
+        $name = [string]$directoryEntry.Key
+        if ($imageCounts.ContainsKey($name)) { continue }
+        $subdirectoryPath = [string]$directoryEntry.Value
+        if ($linkedDirectories.ContainsKey($name)) {
+            $Warnings.Add("Skipped linked structural folder: $subdirectoryPath")
+            continue
+        }
+        $branch = Get-StandardCatalogInventory -CatalogPath $subdirectoryPath -Warnings $Warnings
+        if ($branch.Children.Count -gt 0) { $children.Add($branch) }
+    }
+
+    $orderedChildren = @($children.ToArray() | Sort-Object Name)
+    foreach ($child in $orderedChildren) {
+        foreach ($key in @('Completed', 'Incompleted', 'Missing', 'Total')) {
+            $counts[$key] += $child.Counts[$key]
+        }
+    }
+    return [pscustomobject]@{
+        Name = $catalogDirectory.Name; FullPath = $CatalogPath; Kind = 'Category'
+        Status = $null; Counts = $counts; Children = $orderedChildren
+    }
 }
 
+# Render the same inventory used for the counts: image-only components are
+# real tree nodes, even when there is no corresponding directory on disk.
 function Add-StandardTreeNode {
     param(
         [System.Windows.Forms.TreeNode]$ParentNode,
-        [System.IO.DirectoryInfo]$Directory,
-        [hashtable]$Counts
+        [pscustomobject]$Item,
+        [switch]$ShowBranchCounts
     )
 
-    $childDirectories = @(Get-ChildItem -LiteralPath $Directory.FullName -Directory -ErrorAction Stop |
-        Sort-Object Name)
-
-    if ($childDirectories.Count -gt 0) {
-        $node = New-Object System.Windows.Forms.TreeNode($Directory.Name)
-        $node.Name = $Directory.FullName
-        $node.ForeColor = [System.Drawing.Color]::Black
-        [void]$ParentNode.Nodes.Add($node)
-        foreach ($childDirectory in $childDirectories) {
-            Add-StandardTreeNode -ParentNode $node -Directory $childDirectory -Counts $Counts
+    $nodeText = $Item.Name
+    $nodeColor = [System.Drawing.Color]::Black
+    if ($Item.Kind -eq 'Component') {
+        switch ($Item.Status) {
+            'Completed' {
+                $nodeText = [string][char]0x2713 + ' ' + $Item.Name
+                $nodeColor = [System.Drawing.Color]::ForestGreen
+            }
+            'Missing' {
+                $nodeText = [string][char]0x2717 + ' ' + $Item.Name
+                $nodeColor = [System.Drawing.Color]::Firebrick
+            }
+            'Incompleted' {
+                $nodeText = [string][char]0x25CB + ' ' + $Item.Name
+                $nodeColor = [System.Drawing.Color]::DimGray
+            }
         }
-        return
-    }
-
-    $partStatus = Get-LeafPartStatus -FolderPath $Directory.FullName
-    $Counts.Total++
-    switch ($partStatus) {
-        'Completed' {
-            $Counts.Completed++
-            $nodeText = [char]0x2713 + ' ' + $Directory.Name
-            $nodeColor = [System.Drawing.Color]::ForestGreen
-        }
-        'Missing' {
-            $Counts.Missing++
-            $nodeText = [char]0x2716 + ' ' + $Directory.Name
-            $nodeColor = [System.Drawing.Color]::Firebrick
-        }
-        default {
-            $Counts.Incomplete++
-            $nodeText = [char]0x25CB + ' ' + $Directory.Name
-            $nodeColor = [System.Drawing.Color]::DimGray
-        }
+    } elseif ($ShowBranchCounts) {
+        $nodeText = "$nodeText  [Completed: $($Item.Counts.Completed) | Incompleted: $($Item.Counts.Incompleted) | Missing: $($Item.Counts.Missing)]"
     }
 
     $node = New-Object System.Windows.Forms.TreeNode($nodeText)
-    $node.Name = $Directory.FullName
+    $node.Name = $Item.FullPath
     $node.ForeColor = $nodeColor
     [void]$ParentNode.Nodes.Add($node)
+    foreach ($child in $Item.Children) {
+        Add-StandardTreeNode -ParentNode $node -Item $child
+    }
 }
 
 $standardStatusButton.Add_Click({
@@ -512,8 +578,17 @@ $standardStatusButton.Add_Click({
     $statusLabel.Text = 'Locating and scanning the real CADENAS catalog...'
     try {
         $rootDirectory = Resolve-StandardCatalogRoot -SourceMembersPath $sourceMembersPath
-        $standardRoot = $rootDirectory.FullName
-        $counts = @{ Completed = 0; Missing = 0; Incomplete = 0; Total = 0 }
+        $standardRoot = [string]$rootDirectory.FullName
+        if ([string]::IsNullOrWhiteSpace($standardRoot)) {
+            throw "Could not resolve a valid catalog path from: $sourceMembersPath"
+        }
+        $scanWarnings = New-Object 'System.Collections.Generic.List[string]'
+        $inventory = Get-StandardCatalogInventory -CatalogPath $standardRoot -Warnings $scanWarnings
+        $counts = $inventory.Counts
+        foreach ($warning in $scanWarnings) { Write-Log "Standard Status: $warning" 'DarkOrange' }
+        if ($counts.Total -eq 0) {
+            Write-Log 'No component preview images were found in the local catalog. The full online catalog total is not known.' 'DarkOrange'
+        }
 
         $viewer = New-Object System.Windows.Forms.Form
         $viewer.Text = "Standard Status - $($rootDirectory.Name)"
@@ -570,18 +645,8 @@ $standardStatusButton.Add_Click({
         $rootNode.ForeColor = [System.Drawing.Color]::DarkSlateBlue
         [void]$tree.Nodes.Add($rootNode)
 
-        $topLevelDirectories = @(Get-ChildItem -LiteralPath $standardRoot -Directory -ErrorAction Stop | Sort-Object Name)
-        foreach ($childDirectory in $topLevelDirectories) {
-            Add-StandardTreeNode -ParentNode $rootNode -Directory $childDirectory -Counts $counts
-        }
-
-        # Show aggregated counts on each first-level directory directly under
-        # the standard root (not on every nested directory).
-        for ($branchIndex = 0; $branchIndex -lt $rootNode.Nodes.Count; $branchIndex++) {
-            $topNode = $rootNode.Nodes[$branchIndex]
-            $branchDirectory = $topLevelDirectories[$branchIndex]
-            $branchCounts = Get-StandardBranchCounts -Directory $branchDirectory
-            $topNode.Text = "$($topNode.Text)  [Completed: $($branchCounts.Completed) | Incomplete: $($branchCounts.Incomplete) | Missing: $($branchCounts.Missing)]"
+        foreach ($item in $inventory.Children) {
+            Add-StandardTreeNode -ParentNode $rootNode -Item $item -ShowBranchCounts
         }
 
         if ($counts.Total -gt 0) {
@@ -592,7 +657,7 @@ $standardStatusButton.Add_Click({
         $progress.Value = $percentage
         $percentLabel.Text = "Completion: $percentage%"
         $partsLabel.Text = "$($counts.Completed) in $($counts.Total) parts"
-        $countsLabel.Text = "Completed: $($counts.Completed)    Missing: $($counts.Missing)    Incomplete: $($counts.Incomplete)"
+        $countsLabel.Text = "Completed: $($counts.Completed)    Incompleted: $($counts.Incompleted)    Missing: $($counts.Missing)"
         # Find the exact TreeView node for the current Target Category by its
         # full directory path. Then expand the complete subtree beneath it.
         # This avoids relying on relative path traversal or displayed node text.
@@ -648,13 +713,20 @@ $standardStatusButton.Add_Click({
         })
 
         $statusLabel.Text = "Standard scan complete - $($counts.Completed) in $($counts.Total) parts ($percentage%)"
-        Write-Log "Standard Status (real catalog; source parameter: $sourceMembersPath): $($rootDirectory.FullName) - Completed $($counts.Completed); Missing $($counts.Missing); Incomplete $($counts.Incomplete); Total leaf parts $($counts.Total); Completion $percentage%." 'Blue'
+        Write-Log "Standard Status (real catalog; source parameter: $sourceMembersPath): $($rootDirectory.FullName) - Completed $($counts.Completed); Incompleted $($counts.Incompleted); Missing $($counts.Missing); Total component images $($counts.Total); Completion $percentage%." 'Blue'
         [void]$viewer.ShowDialog($script:MainForm)
     } catch {
         $statusLabel.Text = 'Standard scan failed - see log'
-        Write-Log "Standard Status scan failed: $($_.Exception.Message)" 'Red'
+        $scanError = $_
+        Write-Log "Standard Status scan failed: $($scanError.Exception.Message)" 'Red'
+        if ($scanError.InvocationInfo.PositionMessage) {
+            Write-Log "Scan error location: $($scanError.InvocationInfo.PositionMessage)" 'Red'
+        }
+        if ($scanError.ScriptStackTrace) {
+            Write-Log "Scan call stack: $($scanError.ScriptStackTrace)" 'Red'
+        }
         [System.Windows.Forms.MessageBox]::Show(
-            $_.Exception.Message, 'Standard Status scan failed'
+            $scanError.Exception.Message, 'Standard Status scan failed'
         ) | Out-Null
     } finally {
         $standardStatusButton.Enabled = $true
@@ -767,5 +839,5 @@ $processButton.Add_Click({
         $processButton.Enabled = $true
     }
 })
-$script:MainForm.Add_Shown({ Write-Log 'Ready. V3.2.4 includes Standard Status Viewer and groups CADENAS split files (_PARTn and -n) with their base component before matching PartInfo NB metadata.' 'Blue' })
+$script:MainForm.Add_Shown({ Write-Log 'Ready. V3.2.9 counts component preview images (Completed, Incompleted, Missing) and groups CADENAS split files (_PARTn and -n) with their base component before matching PartInfo NB metadata.' 'Blue' })
 [void]$script:MainForm.ShowDialog()
