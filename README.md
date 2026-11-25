@@ -2,7 +2,7 @@
 
 ## Description
 
-![Version](https://img.shields.io/badge/version-3.2.13-blue)
+![Version](https://img.shields.io/badge/version-4.1-blue)
 ![Platform](https://img.shields.io/badge/platform-Windows-0078D4)
 ![PowerShell](https://img.shields.io/badge/PowerShell-Windows%205.1-5391FE)
 ![Siemens NX](https://img.shields.io/badge/Siemens%20NX-1855%20%7C%202506-009999)

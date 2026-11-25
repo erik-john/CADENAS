@@ -1,10 +1,11 @@
-﻿# CADENAS NX File Organizer V3.2.13
+﻿# CADENAS NX File Organizer V4.1
 # Metadata-driven organizer. Uses PartInfo metadata (NB + ProjectPath) to map
 # flat Members .prt files to the exact CADENAS catalog component folder.
 # Safe behavior: preview/log matching first; never overwrite; ambiguous matches are skipped.
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
+[System.Windows.Forms.Application]::EnableVisualStyles()
 $ErrorActionPreference = 'Stop'
 
 $DefaultSource = Join-Path $env:LOCALAPPDATA 'CADENAS Library\Members\gb_standards'
@@ -175,14 +176,14 @@ function Get-CatalogMappings {
 
 # Main window
 $script:MainForm = New-Object System.Windows.Forms.Form
-$script:MainForm.Text = 'CADENAS Organizer V3.2.13 - Standard Status Viewer'
-$script:MainForm.Size = New-Object System.Drawing.Size(900, 710)
-$script:MainForm.MinimumSize = New-Object System.Drawing.Size(900, 710)
+$script:MainForm.Text = 'CADENAS Organizer - Standard Status'
+$script:MainForm.ClientSize = New-Object System.Drawing.Size(894, 760)
+$script:MainForm.MinimumSize = New-Object System.Drawing.Size(900, 690)
 $script:MainForm.StartPosition = 'CenterScreen'
 $script:MainForm.Font = New-Object System.Drawing.Font('Segoe UI', 9)
 
 $title = New-Object System.Windows.Forms.Label
-$title.Text = 'CADENAS NX File Organizer V3.2.13'
+$title.Text = 'CADENAS NX File Organizer'
 $title.Font = New-Object System.Drawing.Font('Segoe UI', 15, [System.Drawing.FontStyle]::Bold)
 $title.Location = New-Object System.Drawing.Point(20, 16)
 $title.Size = New-Object System.Drawing.Size(800, 32)
@@ -223,62 +224,6 @@ $tgtBrowse.Location = New-Object System.Drawing.Point(767, 149)
 $tgtBrowse.Size = New-Object System.Drawing.Size(105, 29)
 $tgtBrowse.Anchor = 'Top,Right'
 $script:MainForm.Controls.Add($tgtBrowse)
-
-$hint = New-Object System.Windows.Forms.Label
-$hint.Text = 'V3.2.13: Standard Status counts catalog component images, including components without local folders.'
-$hint.ForeColor = [System.Drawing.Color]::DimGray
-$hint.Location = New-Object System.Drawing.Point(22, 184)
-$hint.Size = New-Object System.Drawing.Size(840, 22)
-$script:MainForm.Controls.Add($hint)
-
-$processButton = New-Object System.Windows.Forms.Button
-$processButton.Text = 'Analyze and move matched files'
-$processButton.Font = New-Object System.Drawing.Font('Segoe UI', 10, [System.Drawing.FontStyle]::Bold)
-$processButton.Location = New-Object System.Drawing.Point(22, 218)
-$processButton.Size = New-Object System.Drawing.Size(260, 40)
-$script:MainForm.Controls.Add($processButton)
-$standardStatusButton = New-Object System.Windows.Forms.Button
-$standardStatusButton.Text = 'Standard Status'
-$standardStatusButton.Font = New-Object System.Drawing.Font('Segoe UI', 9, [System.Drawing.FontStyle]::Bold)
-$standardStatusButton.Location = New-Object System.Drawing.Point(415, 218)
-$standardStatusButton.Size = New-Object System.Drawing.Size(180, 40)
-$script:MainForm.Controls.Add($standardStatusButton)
-$clearButton = New-Object System.Windows.Forms.Button
-$clearButton.Text = 'Clear log'
-$clearButton.Location = New-Object System.Drawing.Point(295, 223)
-$clearButton.Size = New-Object System.Drawing.Size(100, 30)
-$script:MainForm.Controls.Add($clearButton)
-$statusLabel = New-Object System.Windows.Forms.Label
-$statusLabel.Text = 'Ready'
-$statusLabel.Location = New-Object System.Drawing.Point(22, 267)
-$statusLabel.Size = New-Object System.Drawing.Size(840, 22)
-$statusLabel.ForeColor = [System.Drawing.Color]::DarkGreen
-$script:MainForm.Controls.Add($statusLabel)
-
-$logLabel = New-Object System.Windows.Forms.Label
-$logLabel.Text = 'Activity log:'
-$logLabel.Location = New-Object System.Drawing.Point(22, 292)
-$logLabel.Size = New-Object System.Drawing.Size(150, 22)
-$script:MainForm.Controls.Add($logLabel)
-$script:LogBox = New-Object System.Windows.Forms.RichTextBox
-$script:LogBox.Location = New-Object System.Drawing.Point(22, 317)
-$script:LogBox.Size = New-Object System.Drawing.Size(850, 310)
-$script:LogBox.Anchor = 'Top,Bottom,Left,Right'
-$script:LogBox.ReadOnly = $true
-$script:LogBox.Font = New-Object System.Drawing.Font('Consolas', 9)
-$script:MainForm.Controls.Add($script:LogBox)
-
-$srcBrowse.Add_Click({
-    $chosen = Browse-Folder 'Select the Members folder containing downloaded NX .prt files' $sourceText.Text
-    if ($chosen) { $sourceText.Text = $chosen; Save-Config }
-})
-$tgtBrowse.Add_Click({
-    $chosen = Browse-Folder 'Select the target catalog category folder' $targetText.Text
-    if ($chosen) { $targetText.Text = $chosen; Save-Config }
-})
-$sourceText.Add_Leave({ Save-Config })
-$targetText.Add_Leave({ Save-Config })
-$clearButton.Add_Click({ $script:LogBox.Clear() })
 
 # Read-only integrity check: scan every descendant component folder. Each folder's
 # TXT (NB field) or PS3 (NB attribute) identifies the expected NX file.
@@ -666,264 +611,573 @@ function Set-StandardStatusViewerInventory {
     $State.Percentage = $percentage
 }
 
-$standardStatusButton.Add_Click({
-    $sourceMembersPath = $sourceText.Text.Trim()
-    if ([string]::IsNullOrWhiteSpace($sourceMembersPath) -or
-        -not (Test-Path -LiteralPath $sourceMembersPath -PathType Container)) {
-        [System.Windows.Forms.MessageBox]::Show(
-            'Select the current standard source folder in the Source Members Folder field, for example ...\\Members\\gb_standards.',
-            'Source Members folder required'
-        ) | Out-Null
-        return
-    }
 
-    Save-Config
-    $standardStatusButton.Enabled = $false
-    $statusLabel.Text = 'Locating and scanning the real CADENAS catalog...'
+# Secondary window: operation controls and activity log. No file operation on open.
+$moveForm = New-Object System.Windows.Forms.Form
+$moveForm.Text = 'Analyze and Move - CADENAS Organizer'
+$moveForm.ClientSize = New-Object System.Drawing.Size(894, 570)
+$moveForm.MinimumSize = New-Object System.Drawing.Size(760, 470)
+$moveForm.StartPosition = 'CenterParent'
+$moveForm.Font = New-Object System.Drawing.Font('Segoe UI', 9)
+$moveForm.ShowInTaskbar = $false
+$moveTitle = New-Object System.Windows.Forms.Label
+$moveTitle.Text = 'Analyze and Move'
+$moveTitle.Location = New-Object System.Drawing.Point(22, 16)
+$moveTitle.Size = New-Object System.Drawing.Size(840, 30)
+$moveTitle.Font = New-Object System.Drawing.Font('Segoe UI', 15, [System.Drawing.FontStyle]::Bold)
+$moveTitle.Anchor = 'Top,Left,Right'
+$moveForm.Controls.Add($moveTitle)
+$moveSourceLabel = New-Object System.Windows.Forms.Label
+$moveSourceLabel.Text = 'Source Members folder:'
+$moveSourceLabel.Location = New-Object System.Drawing.Point(22, 53)
+$moveSourceLabel.Size = New-Object System.Drawing.Size(840, 19)
+$moveForm.Controls.Add($moveSourceLabel)
+$moveSource = New-Object System.Windows.Forms.TextBox
+$moveSource.Location = New-Object System.Drawing.Point(22, 74)
+$moveSource.Size = New-Object System.Drawing.Size(850, 25)
+$moveSource.ReadOnly = $true
+$moveSource.Anchor = 'Top,Left,Right'
+$moveForm.Controls.Add($moveSource)
+$moveTargetLabel = New-Object System.Windows.Forms.Label
+$moveTargetLabel.Text = 'Target catalog category folder:'
+$moveTargetLabel.Location = New-Object System.Drawing.Point(22, 108)
+$moveTargetLabel.Size = New-Object System.Drawing.Size(840, 19)
+$moveForm.Controls.Add($moveTargetLabel)
+$moveTarget = New-Object System.Windows.Forms.TextBox
+$moveTarget.Location = New-Object System.Drawing.Point(22, 129)
+$moveTarget.Size = New-Object System.Drawing.Size(850, 25)
+$moveTarget.ReadOnly = $true
+$moveTarget.Anchor = 'Top,Left,Right'
+$moveForm.Controls.Add($moveTarget)
+
+$processButton = New-Object System.Windows.Forms.Button
+$processButton.Text = 'Analyze and move matched files'
+$processButton.Font = New-Object System.Drawing.Font('Segoe UI', 10, [System.Drawing.FontStyle]::Bold)
+$processButton.Location = New-Object System.Drawing.Point(22, 170)
+$processButton.Size = New-Object System.Drawing.Size(260, 40)
+$moveForm.Controls.Add($processButton)
+$clearButton = New-Object System.Windows.Forms.Button
+$clearButton.Text = 'Clear log'
+$clearButton.Location = New-Object System.Drawing.Point(295, 175)
+$clearButton.Size = New-Object System.Drawing.Size(100, 30)
+$moveForm.Controls.Add($clearButton)
+$statusLabel = New-Object System.Windows.Forms.Label
+$statusLabel.Text = 'Ready'
+$statusLabel.Location = New-Object System.Drawing.Point(22, 219)
+$statusLabel.Size = New-Object System.Drawing.Size(840, 22)
+$statusLabel.Anchor = 'Top,Left,Right'
+$statusLabel.ForeColor = [System.Drawing.Color]::DarkGreen
+$moveForm.Controls.Add($statusLabel)
+
+$logLabel = New-Object System.Windows.Forms.Label
+$logLabel.Text = 'Activity log:'
+$logLabel.Location = New-Object System.Drawing.Point(22, 244)
+$logLabel.Size = New-Object System.Drawing.Size(150, 22)
+$moveForm.Controls.Add($logLabel)
+$script:LogBox = New-Object System.Windows.Forms.RichTextBox
+$script:LogBox.Location = New-Object System.Drawing.Point(22, 267)
+$script:LogBox.Size = New-Object System.Drawing.Size(850, 280)
+$script:LogBox.Anchor = 'Top,Bottom,Left,Right'
+$script:LogBox.ReadOnly = $true
+$script:LogBox.Font = New-Object System.Drawing.Font('Consolas', 9)
+$moveForm.Controls.Add($script:LogBox)
+
+$closeMoveButton = New-Object System.Windows.Forms.Button
+$closeMoveButton.Text = 'Close'
+$closeMoveButton.Location = New-Object System.Drawing.Point(772, 175)
+$closeMoveButton.Size = New-Object System.Drawing.Size(100, 30)
+$closeMoveButton.Anchor = 'Top,Right'
+$moveForm.Controls.Add($closeMoveButton)
+$moveForm.CancelButton = $closeMoveButton
+$closeMoveButton.Add_Click({ $moveForm.DialogResult = [System.Windows.Forms.DialogResult]::Cancel })
+$clearButton.Add_Click({ $script:LogBox.Clear() })
+# Write-Log pumps the message queue, so do not close a running move operation.
+$moveForm.Add_FormClosing({
+    param($sender, $eventArgs)
+    if (-not $processButton.Enabled) { $eventArgs.Cancel = $true }
+})
+$processButton.Add_EnabledChanged({
+    $closeMoveButton.Enabled = $processButton.Enabled
+    $clearButton.Enabled = $processButton.Enabled
+})
+
+$heading = New-Object System.Windows.Forms.Label
+$heading.Text = 'Standard: not scanned'
+$heading.Font = New-Object System.Drawing.Font('Segoe UI', 13, [System.Drawing.FontStyle]::Bold)
+$heading.Location = New-Object System.Drawing.Point(20, 206)
+$heading.Size = New-Object System.Drawing.Size(600, 28)
+$heading.Anchor = 'Top,Left,Right'
+$script:MainForm.Controls.Add($heading)
+
+$percentLabel = New-Object System.Windows.Forms.Label
+$percentLabel.Location = New-Object System.Drawing.Point(20, 250)
+$percentLabel.Size = New-Object System.Drawing.Size(850, 25)
+$percentLabel.Font = New-Object System.Drawing.Font('Segoe UI', 10, [System.Drawing.FontStyle]::Bold)
+$percentLabel.Anchor = 'Top,Left,Right'
+$percentLabel.Text = 'Completion: -'
+$script:MainForm.Controls.Add($percentLabel)
+
+# A custom-painted WinForms panel shows all three status proportions.
+# Store a snapshot on the control so repainting never depends on the scan's scope.
+$progress = New-Object System.Windows.Forms.Panel
+$progress.Location = New-Object System.Drawing.Point(20, 279)
+$progress.Size = New-Object System.Drawing.Size(850, 18)
+$progress.Anchor = 'Top,Left,Right'
+$progress.Tag = [long[]]@(0, 0, 0)
+$progress.AccessibleName = 'Component status distribution'
+$progress.AccessibleDescription = 'Status not scanned'
+$progress.Add_Resize({ param($sender, $eventArgs) $sender.Invalidate() })
+$progress.Add_Paint({
+    param($sender, $eventArgs)
+    $width = $sender.ClientSize.Width
+    $height = $sender.ClientSize.Height
+    if ($width -le 0 -or $height -le 0) { return }
+
+    $values = $sender.Tag
+    $total = [long]$values[0] + [long]$values[1] + [long]$values[2]
+    $graphics = $eventArgs.Graphics
+    $graphicsState = $graphics.Save()
+    $outline = New-Object System.Drawing.Drawing2D.GraphicsPath
+    $brush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(229, 231, 235))
     try {
+        # Rounded outer corners; status segments meet without gaps.
+        $diameter = [int][Math]::Min(12, [Math]::Min($width, $height))
+        if ($diameter -gt 1) {
+            $outline.AddArc(0, 0, $diameter, $diameter, 180, 90)
+            $outline.AddArc(($width - $diameter), 0, $diameter, $diameter, 270, 90)
+            $outline.AddArc(($width - $diameter), ($height - $diameter), $diameter, $diameter, 0, 90)
+            $outline.AddArc(0, ($height - $diameter), $diameter, $diameter, 90, 90)
+            $outline.CloseFigure()
+        } else {
+            $outline.AddRectangle((New-Object System.Drawing.Rectangle(0, 0, $width, $height)))
+        }
+        $graphics.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+        $graphics.FillPath($brush, $outline)
+        $graphics.SetClip($outline, [System.Drawing.Drawing2D.CombineMode]::Intersect)
+        if ($total -gt 0) {
+            $colors = @(
+                [System.Drawing.Color]::FromArgb(22, 163, 74)
+                [System.Drawing.Color]::FromArgb(156, 163, 175)
+                [System.Drawing.Color]::FromArgb(220, 38, 38)
+            )
+            $left = 0
+            $cumulative = [long]0
+            for ($i = 0; $i -lt 3; $i++) {
+                $cumulative += [long]$values[$i]
+                $right = [int][Math]::Round(($cumulative / [double]$total) * $width)
+                if ($right -gt $left) {
+                    $brush.Color = $colors[$i]
+                    $graphics.FillRectangle($brush, $left, 0, ($right - $left), $height)
+                }
+                $left = $right
+            }
+        }
+    } finally {
+        $graphics.Restore($graphicsState)
+        $brush.Dispose()
+        $outline.Dispose()
+    }
+})
+$script:MainForm.Controls.Add($progress)
+
+$partsLabel = New-Object System.Windows.Forms.Label
+$partsLabel.Location = New-Object System.Drawing.Point(20, 306)
+$partsLabel.Size = New-Object System.Drawing.Size(850, 22)
+$partsLabel.Anchor = 'Top,Left,Right'
+$partsLabel.Text = 'No scan yet'
+$script:MainForm.Controls.Add($partsLabel)
+
+# Color-coded legend for the segmented bar, in the existing summary row.
+$countsLegend = New-Object System.Windows.Forms.TableLayoutPanel
+$countsLegend.Location = New-Object System.Drawing.Point(20, 333)
+$countsLegend.Size = New-Object System.Drawing.Size(850, 24)
+$countsLegend.Anchor = 'Top,Left,Right'
+$countsLegend.ColumnCount = 3
+$countsLegend.RowCount = 1
+$countsLegend.GrowStyle = 'FixedSize'
+$legendTexts = @('Completed: -', 'Incompleted: -', 'Missing: -')
+$legendColors = @([System.Drawing.Color]::ForestGreen, [System.Drawing.Color]::DimGray, [System.Drawing.Color]::Firebrick)
+$legendLabels = New-Object 'System.Collections.Generic.List[System.Windows.Forms.Label]'
+for ($column = 0; $column -lt 3; $column++) {
+    [void]$countsLegend.ColumnStyles.Add((New-Object System.Windows.Forms.ColumnStyle([System.Windows.Forms.SizeType]::Percent, [single](100.0 / 3))))
+    $legendLabel = New-Object System.Windows.Forms.Label
+    $legendLabel.Text = $legendTexts[$column]
+    $legendLabel.ForeColor = $legendColors[$column]
+    $legendLabel.Dock = 'Fill'
+    $legendLabel.TextAlign = 'MiddleLeft'
+    $legendLabel.Margin = New-Object System.Windows.Forms.Padding(0)
+    $countsLegend.Controls.Add($legendLabel, $column, 0)
+    $legendLabels.Add($legendLabel)
+}
+$script:MainForm.Controls.Add($countsLegend)
+
+$tree = New-Object System.Windows.Forms.TreeView
+$tree.Location = New-Object System.Drawing.Point(20, 390)
+$tree.Size = New-Object System.Drawing.Size(850, 348)
+$tree.Anchor = 'Top,Bottom,Left,Right'
+$tree.HideSelection = $false
+$tree.Font = New-Object System.Drawing.Font('Segoe UI', 9)
+$script:MainForm.Controls.Add($tree)
+
+# Icon-only refresh button; no additional image asset is required.
+$refreshButton = New-Object System.Windows.Forms.Button
+$refreshButton.Text = [string][char]0x21BB
+$refreshButton.Font = New-Object System.Drawing.Font('Segoe UI Symbol', 14)
+$refreshButton.Location = New-Object System.Drawing.Point(838, 204)
+$refreshButton.Size = New-Object System.Drawing.Size(32, 32)
+$refreshButton.Anchor = 'Top,Right'
+$refreshButton.AccessibleName = 'Refresh Standard Status'
+$refreshButton.AccessibleDescription = 'Rescan the current catalog and update all component statuses.'
+$script:MainForm.Controls.Add($refreshButton)
+$refreshToolTip = New-Object System.Windows.Forms.ToolTip
+$refreshToolTip.SetToolTip($refreshButton, 'Refresh Standard Status')
+
+
+# The main dashboard owns the status controls for the lifetime of the application.
+$openMoveButton = New-Object System.Windows.Forms.Button
+$openMoveButton.Text = 'Analyze and Move'
+$openMoveButton.Font = New-Object System.Drawing.Font('Segoe UI', 10, [System.Drawing.FontStyle]::Bold)
+$openMoveButton.Location = New-Object System.Drawing.Point(648, 204)
+$openMoveButton.Size = New-Object System.Drawing.Size(180, 32)
+$openMoveButton.Anchor = 'Top,Right'
+$script:MainForm.Controls.Add($openMoveButton)
+$scanStatusLabel = New-Object System.Windows.Forms.Label
+$scanStatusLabel.Location = New-Object System.Drawing.Point(20, 362)
+$scanStatusLabel.Size = New-Object System.Drawing.Size(850, 22)
+$scanStatusLabel.Anchor = 'Top,Left,Right'
+$scanStatusLabel.ForeColor = [System.Drawing.Color]::DimGray
+$scanStatusLabel.Text = 'Select a source folder and refresh to view its catalog.'
+$script:MainForm.Controls.Add($scanStatusLabel)
+
+# V4.1 presentation layer only. Keep the same controls, events and dashboard state.
+# Native Windows Forms controls remain responsible for input, focus and accessibility.
+function Get-OrganizerUiColor {
+    param([string]$Hex)
+    return [System.Drawing.ColorTranslator]::FromHtml($Hex)
+}
+
+function Set-OrganizerRoundedRegion {
+    param([System.Windows.Forms.Control]$Control, [int]$Radius = 8)
+    $w = $Control.ClientSize.Width
+    $h = $Control.ClientSize.Height
+    $d = [int][Math]::Min(2 * $Radius, [Math]::Min($w, $h))
+    if ($d -lt 2) { return }
+    $path = New-Object System.Drawing.Drawing2D.GraphicsPath
+    try {
+        $path.AddArc(0, 0, $d, $d, 180, 90)
+        $path.AddArc(($w - $d), 0, $d, $d, 270, 90)
+        $path.AddArc(($w - $d), ($h - $d), $d, $d, 0, 90)
+        $path.AddArc(0, ($h - $d), $d, $d, 90, 90)
+        $path.CloseFigure()
+        $Control.Region = New-Object System.Drawing.Region -ArgumentList $path
+    } finally {
+        $path.Dispose()
+    }
+}
+
+function Add-OrganizerUiSurface {
+    param([System.Windows.Forms.Form]$Owner, [int]$X, [int]$Y, [int]$Width, [int]$Height)
+    $surface = New-Object System.Windows.Forms.Panel
+    $surface.Location = New-Object System.Drawing.Point($X, $Y)
+    $surface.Size = New-Object System.Drawing.Size($Width, $Height)
+    $surface.Anchor = 'Top,Left,Right'
+    $surface.BackColor = [System.Drawing.Color]::White
+    $surface.TabStop = $false
+    $Owner.Controls.Add($surface)
+    $surface.SendToBack()
+    Set-OrganizerRoundedRegion -Control $surface -Radius 10
+    $surface.Add_SizeChanged({ param($sender, $eventArgs) Set-OrganizerRoundedRegion -Control $sender -Radius 10 })
+}
+
+function Set-OrganizerUiButton {
+    param([System.Windows.Forms.Button]$Button, [switch]$Primary)
+    $Button.FlatStyle = [System.Windows.Forms.FlatStyle]::Flat
+    $Button.UseVisualStyleBackColor = $false
+    $Button.Cursor = [System.Windows.Forms.Cursors]::Hand
+    if ($Primary) {
+        $Button.BackColor = Get-OrganizerUiColor '#1261D5'
+        $Button.ForeColor = [System.Drawing.Color]::White
+        $Button.FlatAppearance.BorderSize = 0
+        $Button.FlatAppearance.MouseOverBackColor = Get-OrganizerUiColor '#0C51BA'
+        $Button.FlatAppearance.MouseDownBackColor = Get-OrganizerUiColor '#08439D'
+        Set-OrganizerRoundedRegion -Control $Button -Radius 6
+        $Button.Add_SizeChanged({ param($sender, $eventArgs) Set-OrganizerRoundedRegion -Control $sender -Radius 6 })
+    } else {
+        $Button.BackColor = [System.Drawing.Color]::White
+        $Button.ForeColor = Get-OrganizerUiColor '#263B55'
+        $Button.FlatAppearance.BorderSize = 1
+        $Button.FlatAppearance.BorderColor = Get-OrganizerUiColor '#CBD5E1'
+        $Button.FlatAppearance.MouseOverBackColor = Get-OrganizerUiColor '#E8F1FF'
+        $Button.FlatAppearance.MouseDownBackColor = Get-OrganizerUiColor '#D8E8FF'
+    }
+}
+
+$uiBackground = Get-OrganizerUiColor '#EFF3F8'
+$uiText = Get-OrganizerUiColor '#172B45'
+$uiMuted = Get-OrganizerUiColor '#52657B'
+$uiBlue = Get-OrganizerUiColor '#1261D5'
+$uiWhite = [System.Drawing.Color]::White
+$script:MainForm.BackColor = $uiBackground
+$moveForm.BackColor = $uiBackground
+$script:MainForm.ForeColor = $uiText
+$moveForm.ForeColor = $uiText
+
+# Main window: folder settings, status card and full-width catalog tree.
+$title.Font = New-Object System.Drawing.Font('Segoe UI', 19, [System.Drawing.FontStyle]::Bold)
+$title.Location = New-Object System.Drawing.Point(22, 16)
+$title.Size = New-Object System.Drawing.Size(850, 38)
+$title.Anchor = 'Top,Left,Right'
+$title.ForeColor = $uiText
+$title.BackColor = $uiBackground
+$title.TextAlign = 'MiddleLeft'
+Add-OrganizerUiSurface -Owner $script:MainForm -X 20 -Y 70 -Width 854 -Height 136
+Add-OrganizerUiSurface -Owner $script:MainForm -X 20 -Y 218 -Width 854 -Height 185
+
+$srcLabel.Location = New-Object System.Drawing.Point(36, 81)
+$srcLabel.Size = New-Object System.Drawing.Size(710, 22)
+$sourceText.Location = New-Object System.Drawing.Point(36, 107)
+$sourceText.Size = New-Object System.Drawing.Size(710, 25)
+$srcBrowse.Location = New-Object System.Drawing.Point(756, 104)
+$srcBrowse.Size = New-Object System.Drawing.Size(102, 30)
+$tgtLabel.Location = New-Object System.Drawing.Point(36, 143)
+$tgtLabel.Size = New-Object System.Drawing.Size(710, 22)
+$targetText.Location = New-Object System.Drawing.Point(36, 169)
+$targetText.Size = New-Object System.Drawing.Size(710, 25)
+$tgtBrowse.Location = New-Object System.Drawing.Point(756, 166)
+$tgtBrowse.Size = New-Object System.Drawing.Size(102, 30)
+foreach ($label in @($srcLabel, $tgtLabel)) {
+    $label.Anchor = 'Top,Left,Right'
+    $label.BackColor = $uiWhite
+    $label.ForeColor = $uiMuted
+    $label.Font = New-Object System.Drawing.Font('Segoe UI', 9, [System.Drawing.FontStyle]::Bold)
+}
+foreach ($inputBox in @($sourceText, $targetText, $moveSource, $moveTarget)) {
+    $inputBox.BorderStyle = 'FixedSingle'
+    $inputBox.Font = New-Object System.Drawing.Font('Segoe UI', 10)
+    $inputBox.ForeColor = $uiText
+    $inputBox.BackColor = $uiWhite
+}
+
+$heading.Location = New-Object System.Drawing.Point(36, 230)
+$heading.Size = New-Object System.Drawing.Size(565, 35)
+$heading.Font = New-Object System.Drawing.Font('Segoe UI', 16, [System.Drawing.FontStyle]::Bold)
+$heading.ForeColor = $uiText
+$heading.TextAlign = 'MiddleLeft'
+$openMoveButton.Location = New-Object System.Drawing.Point(612, 230)
+$openMoveButton.Size = New-Object System.Drawing.Size(197, 36)
+$openMoveButton.Text = ([string][char]0x25B6) + '  Analyze and Move'
+$openMoveButton.AccessibleName = 'Analyze and Move'
+$refreshButton.Location = New-Object System.Drawing.Point(820, 230)
+$refreshButton.Size = New-Object System.Drawing.Size(38, 36)
+$refreshButton.Font = New-Object System.Drawing.Font('Segoe UI Symbol', 16)
+$percentLabel.Location = New-Object System.Drawing.Point(36, 272)
+$percentLabel.Size = New-Object System.Drawing.Size(822, 26)
+$percentLabel.Font = New-Object System.Drawing.Font('Segoe UI', 13, [System.Drawing.FontStyle]::Bold)
+$percentLabel.ForeColor = $uiBlue
+$progress.Location = New-Object System.Drawing.Point(36, 302)
+$progress.Size = New-Object System.Drawing.Size(822, 21)
+$progress.BackColor = $uiWhite
+$partsLabel.Location = New-Object System.Drawing.Point(36, 329)
+$partsLabel.Size = New-Object System.Drawing.Size(822, 21)
+$partsLabel.ForeColor = $uiText
+$countsLegend.Location = New-Object System.Drawing.Point(36, 352)
+$countsLegend.Size = New-Object System.Drawing.Size(822, 23)
+$countsLegend.BackColor = $uiWhite
+foreach ($legendLabel in $legendLabels) {
+    $legendLabel.BackColor = $uiWhite
+    $legendLabel.Font = New-Object System.Drawing.Font('Segoe UI', 10, [System.Drawing.FontStyle]::Bold)
+}
+$scanStatusLabel.Location = New-Object System.Drawing.Point(36, 377)
+$scanStatusLabel.Size = New-Object System.Drawing.Size(822, 23)
+foreach ($label in @($heading, $percentLabel, $partsLabel, $scanStatusLabel)) {
+    $label.BackColor = $uiWhite
+}
+$tree.Location = New-Object System.Drawing.Point(20, 415)
+$tree.Size = New-Object System.Drawing.Size(854, 323)
+$tree.BackColor = $uiWhite
+$tree.ForeColor = $uiText
+$tree.BorderStyle = 'FixedSingle'
+$tree.Font = New-Object System.Drawing.Font('Segoe UI', 10)
+$tree.ItemHeight = 23
+
+# Secondary window: same file operation and log, styled consistently.
+$moveTitle.Font = New-Object System.Drawing.Font('Segoe UI', 19, [System.Drawing.FontStyle]::Bold)
+$moveTitle.Location = New-Object System.Drawing.Point(22, 16)
+$moveTitle.Size = New-Object System.Drawing.Size(850, 38)
+$moveTitle.BackColor = $uiBackground
+$moveTitle.ForeColor = $uiText
+$moveTitle.TextAlign = 'MiddleLeft'
+Add-OrganizerUiSurface -Owner $moveForm -X 20 -Y 70 -Width 854 -Height 136
+$moveSourceLabel.Text = 'Source Members folder (read-only):'
+$moveTargetLabel.Text = 'Target catalog category folder (read-only):'
+$moveSourceLabel.Location = New-Object System.Drawing.Point(36, 81)
+$moveSourceLabel.Size = New-Object System.Drawing.Size(822, 22)
+$moveSource.Location = New-Object System.Drawing.Point(36, 107)
+$moveSource.Size = New-Object System.Drawing.Size(822, 25)
+$moveTargetLabel.Location = New-Object System.Drawing.Point(36, 143)
+$moveTargetLabel.Size = New-Object System.Drawing.Size(822, 22)
+$moveTarget.Location = New-Object System.Drawing.Point(36, 169)
+$moveTarget.Size = New-Object System.Drawing.Size(822, 25)
+foreach ($label in @($moveSourceLabel, $moveTargetLabel)) {
+    $label.Anchor = 'Top,Left,Right'
+    $label.BackColor = $uiWhite
+    $label.ForeColor = $uiMuted
+    $label.Font = New-Object System.Drawing.Font('Segoe UI', 9, [System.Drawing.FontStyle]::Bold)
+}
+$moveSource.BackColor = $uiBackground
+$moveTarget.BackColor = $uiBackground
+$processButton.Location = New-Object System.Drawing.Point(20, 222)
+$processButton.Size = New-Object System.Drawing.Size(286, 40)
+$processButton.Text = ([string][char]0x25B6) + '  Analyze and move matched files'
+$processButton.AccessibleName = 'Analyze and move matched files'
+$clearButton.Location = New-Object System.Drawing.Point(318, 222)
+$clearButton.Size = New-Object System.Drawing.Size(105, 40)
+$closeMoveButton.Location = New-Object System.Drawing.Point(769, 222)
+$closeMoveButton.Size = New-Object System.Drawing.Size(105, 40)
+$statusLabel.Location = New-Object System.Drawing.Point(20, 273)
+$statusLabel.Size = New-Object System.Drawing.Size(854, 23)
+$statusLabel.Font = New-Object System.Drawing.Font('Segoe UI', 10, [System.Drawing.FontStyle]::Bold)
+$statusLabel.BackColor = $uiBackground
+$logLabel.Location = New-Object System.Drawing.Point(20, 301)
+$logLabel.Size = New-Object System.Drawing.Size(854, 22)
+$logLabel.Anchor = 'Top,Left,Right'
+$logLabel.Font = New-Object System.Drawing.Font('Segoe UI', 10, [System.Drawing.FontStyle]::Bold)
+$logLabel.ForeColor = $uiText
+$logLabel.BackColor = $uiBackground
+$script:LogBox.Location = New-Object System.Drawing.Point(20, 326)
+$script:LogBox.Size = New-Object System.Drawing.Size(854, 221)
+$script:LogBox.BackColor = $uiWhite
+$script:LogBox.ForeColor = $uiText
+$script:LogBox.BorderStyle = 'FixedSingle'
+$script:LogBox.Font = New-Object System.Drawing.Font('Consolas', 10)
+
+foreach ($button in @($srcBrowse, $tgtBrowse, $refreshButton, $clearButton, $closeMoveButton)) {
+    Set-OrganizerUiButton -Button $button
+}
+Set-OrganizerUiButton -Button $openMoveButton -Primary
+Set-OrganizerUiButton -Button $processButton -Primary
+$refreshButton.ForeColor = $uiBlue
+
+$script:DashboardState = [pscustomobject]@{
+    Viewer = $script:MainForm; Tree = $tree; StandardRoot = ''
+    TargetCategoryPath = ''; SourceMembersPath = ''
+    PercentLabel = $percentLabel; PartsLabel = $partsLabel
+    Progress = $progress; LegendLabels = $legendLabels
+    StatusLabel = $scanStatusLabel; Heading = $heading
+    RootNode = $null; TargetNode = $null; Percentage = 0; Busy = $false
+}
+$refreshButton.Tag = $script:DashboardState
+
+# Read from the current input fields each time, so changing standards is supported.
+# All catalog inventory, rendering and branch-expansion functions are reused unchanged.
+function Update-MainStandardStatus {
+    param([switch]$Quiet)
+    $state = $script:DashboardState
+    if ($state.Busy) { return }
+    $sourceMembersPath = $sourceText.Text.Trim()
+    $targetCategoryPath = $targetText.Text.Trim()
+    $state.Busy = $true
+    $refreshButton.Enabled = $false
+    $openMoveButton.Enabled = $false
+    $sourceText.Enabled = $false
+    $targetText.Enabled = $false
+    $srcBrowse.Enabled = $false
+    $tgtBrowse.Enabled = $false
+    $state.Viewer.UseWaitCursor = $true
+    $state.StatusLabel.ForeColor = [System.Drawing.Color]::DimGray
+    $state.StatusLabel.Text = 'Locating and scanning the CADENAS catalog...'
+    try {
+        if ([string]::IsNullOrWhiteSpace($sourceMembersPath) -or
+            -not (Test-Path -LiteralPath $sourceMembersPath -PathType Container)) {
+            $state.StatusLabel.Text = 'Source folder not available. Select an existing Members folder and refresh. Previous results, if any, are not current.'
+            if (-not $Quiet) {
+                [void][System.Windows.Forms.MessageBox]::Show($state.Viewer, 'Select an existing source Members folder.', 'Source Members folder required')
+            }
+            return
+        }
+        Save-Config
         $rootDirectory = Resolve-StandardCatalogRoot -SourceMembersPath $sourceMembersPath
         $standardRoot = [string]$rootDirectory.FullName
         if ([string]::IsNullOrWhiteSpace($standardRoot)) {
             throw "Could not resolve a valid catalog path from: $sourceMembersPath"
         }
-        $scanWarnings = New-Object 'System.Collections.Generic.List[string]'
-        $inventory = Get-StandardCatalogInventory -CatalogPath $standardRoot -Warnings $scanWarnings
+        $warnings = New-Object 'System.Collections.Generic.List[string]'
+        $inventory = Get-StandardCatalogInventory -CatalogPath $standardRoot -Warnings $warnings
+        # Do not replace the previous inventory until the new scan succeeds.
+        $state.StandardRoot = $standardRoot
+        $state.TargetCategoryPath = $targetCategoryPath
+        $state.SourceMembersPath = $sourceMembersPath
+        Set-StandardStatusViewerInventory -State $state -Inventory $inventory
+        $state.Heading.Text = "Standard: $($rootDirectory.Name)"
         $counts = $inventory.Counts
-        foreach ($warning in $scanWarnings) { Write-Log "Standard Status: $warning" 'DarkOrange' }
+        foreach ($warning in $warnings) { Write-Log "Standard Status: $warning" 'DarkOrange' }
         if ($counts.Total -eq 0) {
             Write-Log 'No component preview images were found in the local catalog. The full online catalog total is not known.' 'DarkOrange'
         }
-
-        $viewer = New-Object System.Windows.Forms.Form
-        $viewer.Text = "Standard Status - $($rootDirectory.Name)"
-        $viewer.Size = New-Object System.Drawing.Size(850, 720)
-        $viewer.MinimumSize = New-Object System.Drawing.Size(650, 500)
-        $viewer.StartPosition = 'CenterParent'
-        $viewer.Font = New-Object System.Drawing.Font('Segoe UI', 9)
-
-        $heading = New-Object System.Windows.Forms.Label
-        $heading.Text = "Standard: $($rootDirectory.Name)"
-        $heading.Font = New-Object System.Drawing.Font('Segoe UI', 13, [System.Drawing.FontStyle]::Bold)
-        $heading.Location = New-Object System.Drawing.Point(18, 15)
-        $heading.Size = New-Object System.Drawing.Size(745, 28)
-        $heading.Anchor = 'Top,Left,Right'
-        $viewer.Controls.Add($heading)
-
-        $percentLabel = New-Object System.Windows.Forms.Label
-        $percentLabel.Location = New-Object System.Drawing.Point(20, 53)
-        $percentLabel.Size = New-Object System.Drawing.Size(790, 25)
-        $percentLabel.Font = New-Object System.Drawing.Font('Segoe UI', 10, [System.Drawing.FontStyle]::Bold)
-        $percentLabel.Anchor = 'Top,Left,Right'
-        $viewer.Controls.Add($percentLabel)
-
-        # A custom-painted WinForms panel shows all three status proportions.
-        # Store a snapshot on the control so repainting never depends on the scan's scope.
-        $progress = New-Object System.Windows.Forms.Panel
-        $progress.Location = New-Object System.Drawing.Point(20, 82)
-        $progress.Size = New-Object System.Drawing.Size(790, 18)
-        $progress.Anchor = 'Top,Left,Right'
-        $progress.Tag = [long[]]@($counts.Completed, $counts.Incompleted, $counts.Missing)
-        $progress.AccessibleName = 'Component status distribution'
-        $progress.AccessibleDescription = "Completed: $($counts.Completed); Incompleted: $($counts.Incompleted); Missing: $($counts.Missing)"
-        $progress.Add_Resize({ param($sender, $eventArgs) $sender.Invalidate() })
-        $progress.Add_Paint({
-            param($sender, $eventArgs)
-            $width = $sender.ClientSize.Width
-            $height = $sender.ClientSize.Height
-            if ($width -le 0 -or $height -le 0) { return }
-
-            $values = $sender.Tag
-            $total = [long]$values[0] + [long]$values[1] + [long]$values[2]
-            $graphics = $eventArgs.Graphics
-            $graphicsState = $graphics.Save()
-            $outline = New-Object System.Drawing.Drawing2D.GraphicsPath
-            $brush = New-Object System.Drawing.SolidBrush([System.Drawing.Color]::FromArgb(229, 231, 235))
-            try {
-                # Rounded outer corners; status segments meet without gaps.
-                $diameter = [int][Math]::Min(12, [Math]::Min($width, $height))
-                if ($diameter -gt 1) {
-                    $outline.AddArc(0, 0, $diameter, $diameter, 180, 90)
-                    $outline.AddArc(($width - $diameter), 0, $diameter, $diameter, 270, 90)
-                    $outline.AddArc(($width - $diameter), ($height - $diameter), $diameter, $diameter, 0, 90)
-                    $outline.AddArc(0, ($height - $diameter), $diameter, $diameter, 90, 90)
-                    $outline.CloseFigure()
-                } else {
-                    $outline.AddRectangle((New-Object System.Drawing.Rectangle(0, 0, $width, $height)))
-                }
-                $graphics.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
-                $graphics.FillPath($brush, $outline)
-                $graphics.SetClip($outline, [System.Drawing.Drawing2D.CombineMode]::Intersect)
-                if ($total -gt 0) {
-                    $colors = @(
-                        [System.Drawing.Color]::FromArgb(22, 163, 74)
-                        [System.Drawing.Color]::FromArgb(156, 163, 175)
-                        [System.Drawing.Color]::FromArgb(220, 38, 38)
-                    )
-                    $left = 0
-                    $cumulative = [long]0
-                    for ($i = 0; $i -lt 3; $i++) {
-                        $cumulative += [long]$values[$i]
-                        $right = [int][Math]::Round(($cumulative / [double]$total) * $width)
-                        if ($right -gt $left) {
-                            $brush.Color = $colors[$i]
-                            $graphics.FillRectangle($brush, $left, 0, ($right - $left), $height)
-                        }
-                        $left = $right
-                    }
-                }
-            } finally {
-                $graphics.Restore($graphicsState)
-                $brush.Dispose()
-                $outline.Dispose()
-            }
-        })
-        $viewer.Controls.Add($progress)
-
-        $partsLabel = New-Object System.Windows.Forms.Label
-        $partsLabel.Location = New-Object System.Drawing.Point(20, 108)
-        $partsLabel.Size = New-Object System.Drawing.Size(790, 22)
-        $partsLabel.Anchor = 'Top,Left,Right'
-        $viewer.Controls.Add($partsLabel)
-
-        # Color-coded legend for the segmented bar, in the existing summary row.
-        $countsLegend = New-Object System.Windows.Forms.TableLayoutPanel
-        $countsLegend.Location = New-Object System.Drawing.Point(20, 135)
-        $countsLegend.Size = New-Object System.Drawing.Size(790, 24)
-        $countsLegend.Anchor = 'Top,Left,Right'
-        $countsLegend.ColumnCount = 3
-        $countsLegend.RowCount = 1
-        $countsLegend.GrowStyle = 'FixedSize'
-        $legendTexts = @("Completed: $($counts.Completed)", "Incompleted: $($counts.Incompleted)", "Missing: $($counts.Missing)")
-        $legendColors = @([System.Drawing.Color]::ForestGreen, [System.Drawing.Color]::DimGray, [System.Drawing.Color]::Firebrick)
-        $legendLabels = New-Object 'System.Collections.Generic.List[System.Windows.Forms.Label]'
-        for ($column = 0; $column -lt 3; $column++) {
-            [void]$countsLegend.ColumnStyles.Add((New-Object System.Windows.Forms.ColumnStyle([System.Windows.Forms.SizeType]::Percent, [single](100.0 / 3))))
-            $legendLabel = New-Object System.Windows.Forms.Label
-            $legendLabel.Text = $legendTexts[$column]
-            $legendLabel.ForeColor = $legendColors[$column]
-            $legendLabel.Dock = 'Fill'
-            $legendLabel.TextAlign = 'MiddleLeft'
-            $legendLabel.Margin = New-Object System.Windows.Forms.Padding(0)
-            $countsLegend.Controls.Add($legendLabel, $column, 0)
-            $legendLabels.Add($legendLabel)
-        }
-        $viewer.Controls.Add($countsLegend)
-
-        $tree = New-Object System.Windows.Forms.TreeView
-        $tree.Location = New-Object System.Drawing.Point(20, 170)
-        $tree.Size = New-Object System.Drawing.Size(790, 485)
-        $tree.Anchor = 'Top,Bottom,Left,Right'
-        $tree.HideSelection = $false
-        $tree.Font = New-Object System.Drawing.Font('Segoe UI', 9)
-        $viewer.Controls.Add($tree)
-
-        # Icon-only refresh button; no additional image asset is required.
-        $refreshButton = New-Object System.Windows.Forms.Button
-        $refreshButton.Text = [string][char]0x21BB
-        $refreshButton.Font = New-Object System.Drawing.Font('Segoe UI Symbol', 14)
-        $refreshButton.Location = New-Object System.Drawing.Point(778, 12)
-        $refreshButton.Size = New-Object System.Drawing.Size(32, 32)
-        $refreshButton.Anchor = 'Top,Right'
-        $refreshButton.AccessibleName = 'Refresh Standard Status'
-        $refreshButton.AccessibleDescription = 'Rescan the current catalog and update all component statuses.'
-        $viewer.Controls.Add($refreshButton)
-        $refreshToolTip = New-Object System.Windows.Forms.ToolTip
-        $refreshToolTip.SetToolTip($refreshButton, 'Refresh Standard Status')
-
-        # Explicit state avoids relying on transient PowerShell event-handler scope.
-        $viewerState = [pscustomobject]@{
-            Viewer = $viewer; Tree = $tree; StandardRoot = $standardRoot
-            TargetCategoryPath = $targetText.Text.Trim()
-            PercentLabel = $percentLabel; PartsLabel = $partsLabel
-            Progress = $progress; LegendLabels = $legendLabels
-            StatusLabel = $statusLabel; SourceMembersPath = $sourceMembersPath
-            RootNode = $null; TargetNode = $null; Percentage = 0; Busy = $false
-        }
-        $viewer.Tag = $viewerState
-        $refreshButton.Tag = $viewerState
-        Set-StandardStatusViewerInventory -State $viewerState -Inventory $inventory
-
-        # Repeat the initial expansion after the dialog has been displayed.
-        $viewer.Add_Shown({
-            param($sender, $eventArgs)
-            $state = $sender.Tag
-            if ($null -ne $state.TargetNode) {
-                Expand-UnfinishedStandardBranches -Node $state.TargetNode
-                $state.Tree.SelectedNode = $state.TargetNode
-                $state.TargetNode.EnsureVisible()
-            } else {
-                $state.RootNode.Expand()
-            }
-            [void]$state.Tree.Focus()
-        })
-        # Logging pumps the message queue, so prevent closing during a refresh.
-        $viewer.Add_FormClosing({
-            param($sender, $eventArgs)
-            if ($sender.Tag.Busy) { $eventArgs.Cancel = $true }
-        })
-        $refreshButton.Add_Click({
-            param($sender, $eventArgs)
-            $state = $sender.Tag
-            if ($state.Busy) { return }
-            $state.Busy = $true
-            $sender.Enabled = $false
-            $state.Viewer.UseWaitCursor = $true
-            $state.StatusLabel.Text = 'Refreshing Standard Status...'
-            try {
-                # Scan the same standard from disk; do not move or modify files.
-                $warnings = New-Object 'System.Collections.Generic.List[string]'
-                $newInventory = Get-StandardCatalogInventory -CatalogPath $state.StandardRoot -Warnings $warnings
-                # A failed filesystem scan never clears the previous displayed tree.
-                Set-StandardStatusViewerInventory -State $state -Inventory $newInventory
-                $newCounts = $newInventory.Counts
-                foreach ($warning in $warnings) { Write-Log "Standard Status refresh: $warning" 'DarkOrange' }
-                if ($newCounts.Total -eq 0) {
-                    Write-Log 'No component preview images were found in the local catalog. The full online catalog total is not known.' 'DarkOrange'
-                }
-                $state.StatusLabel.Text = "Standard scan complete - $($newCounts.Completed) in $($newCounts.Total) parts ($($state.Percentage)%)"
-                Write-Log "Standard Status refreshed: $($state.StandardRoot) - Completed $($newCounts.Completed); Incompleted $($newCounts.Incompleted); Missing $($newCounts.Missing); Total component images $($newCounts.Total); Completion $($state.Percentage)%." 'Blue'
-            } catch {
-                $refreshError = $_
-                $state.StatusLabel.Text = 'Standard refresh failed - see log'
-                Write-Log "Standard Status refresh failed: $($refreshError.Exception.Message)" 'Red'
-                if ($refreshError.InvocationInfo.PositionMessage) {
-                    Write-Log "Refresh error location: $($refreshError.InvocationInfo.PositionMessage)" 'Red'
-                }
-                if ($refreshError.ScriptStackTrace) {
-                    Write-Log "Refresh call stack: $($refreshError.ScriptStackTrace)" 'Red'
-                }
-                [void][System.Windows.Forms.MessageBox]::Show($state.Viewer, $refreshError.Exception.Message, 'Standard Status refresh failed')
-            } finally {
-                $state.Viewer.UseWaitCursor = $false
-                $sender.Enabled = $true
-                $state.Busy = $false
-            }
-        })
-
-        $percentage = $viewerState.Percentage
-        $statusLabel.Text = "Standard scan complete - $($counts.Completed) in $($counts.Total) parts ($percentage%)"
-        Write-Log "Standard Status (real catalog; source parameter: $sourceMembersPath): $($rootDirectory.FullName) - Completed $($counts.Completed); Incompleted $($counts.Incompleted); Missing $($counts.Missing); Total component images $($counts.Total); Completion $percentage%." 'Blue'
-        try {
-            [void]$viewer.ShowDialog($script:MainForm)
-        } finally {
-            $refreshToolTip.Dispose()
-            $viewer.Dispose()
-        }
+        $state.StatusLabel.ForeColor = [System.Drawing.Color]::DarkGreen
+        $state.StatusLabel.Text = "Updated: $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
+        Write-Log "Standard Status refreshed: $standardRoot - Completed $($counts.Completed); Incompleted $($counts.Incompleted); Missing $($counts.Missing); Total component images $($counts.Total); Completion $($state.Percentage)%." 'Blue'
     } catch {
-        $statusLabel.Text = 'Standard scan failed - see log'
         $scanError = $_
+        $state.StatusLabel.ForeColor = [System.Drawing.Color]::Firebrick
+        $state.StatusLabel.Text = 'Standard scan failed - see Activity log in Analyze and Move. Previous results may be out of date.'
         Write-Log "Standard Status scan failed: $($scanError.Exception.Message)" 'Red'
-        if ($scanError.InvocationInfo.PositionMessage) {
-            Write-Log "Scan error location: $($scanError.InvocationInfo.PositionMessage)" 'Red'
+        if ($scanError.InvocationInfo.PositionMessage) { Write-Log "Scan error location: $($scanError.InvocationInfo.PositionMessage)" 'Red' }
+        if ($scanError.ScriptStackTrace) { Write-Log "Scan call stack: $($scanError.ScriptStackTrace)" 'Red' }
+        if (-not $Quiet) {
+            [void][System.Windows.Forms.MessageBox]::Show($state.Viewer, $scanError.Exception.Message, 'Standard Status scan failed')
         }
-        if ($scanError.ScriptStackTrace) {
-            Write-Log "Scan call stack: $($scanError.ScriptStackTrace)" 'Red'
-        }
-        [System.Windows.Forms.MessageBox]::Show(
-            $scanError.Exception.Message, 'Standard Status scan failed'
-        ) | Out-Null
     } finally {
-        $standardStatusButton.Enabled = $true
+        $state.Viewer.UseWaitCursor = $false
+        $state.Busy = $false
+        $refreshButton.Enabled = $true
+        $openMoveButton.Enabled = $true
+        $sourceText.Enabled = $true
+        $targetText.Enabled = $true
+        $srcBrowse.Enabled = $true
+        $tgtBrowse.Enabled = $true
+    }
+}
+
+$refreshButton.Add_Click({ Update-MainStandardStatus })
+$script:MainForm.Add_FormClosing({
+    param($sender, $eventArgs)
+    if ($script:DashboardState.Busy) { $eventArgs.Cancel = $true }
+})
+$srcBrowse.Add_Click({
+    $chosen = Browse-Folder 'Select the Members folder containing downloaded NX .prt files' $sourceText.Text
+    if ($chosen) { $sourceText.Text = $chosen; Save-Config; Update-MainStandardStatus }
+})
+$tgtBrowse.Add_Click({
+    $chosen = Browse-Folder 'Select the target catalog category folder' $targetText.Text
+    if ($chosen) { $targetText.Text = $chosen; Save-Config; Update-MainStandardStatus }
+})
+$sourceText.Add_Leave({ if (-not $script:DashboardState.Busy) { Save-Config } })
+$targetText.Add_Leave({ if (-not $script:DashboardState.Busy) { Save-Config } })
+$sourceText.Add_TextChanged({
+    if (-not $script:DashboardState.Busy) {
+        $scanStatusLabel.ForeColor = [System.Drawing.Color]::DimGray
+        $scanStatusLabel.Text = 'Source changed. Click Refresh to update the displayed status.'
+    }
+})
+$targetText.Add_TextChanged({
+    if (-not $script:DashboardState.Busy) {
+        $scanStatusLabel.ForeColor = [System.Drawing.Color]::DimGray
+        $scanStatusLabel.Text = 'Target changed. Click Refresh to focus the selected category.'
+    }
+})
+$openMoveButton.Add_Click({
+    if ($script:DashboardState.Busy) { return }
+    # Opening the operation window never moves files. The existing inner button does.
+    $moveSource.Text = $sourceText.Text.Trim()
+    $moveTarget.Text = $targetText.Text.Trim()
+    $statusLabel.Text = 'Ready'
+    $moveForm.DialogResult = [System.Windows.Forms.DialogResult]::None
+    try {
+        [void]$moveForm.ShowDialog($script:MainForm)
+    } finally {
+        # Refresh the current catalog after returning, including partially completed moves.
+        Update-MainStandardStatus -Quiet
     }
 })
 
@@ -1033,5 +1287,14 @@ $processButton.Add_Click({
         $processButton.Enabled = $true
     }
 })
-$script:MainForm.Add_Shown({ Write-Log 'Ready. V3.2.13 counts component preview images (Completed, Incompleted, Missing) and groups CADENAS split files (_PARTn and -n) with their base component before matching PartInfo NB metadata.' 'Blue' })
-[void]$script:MainForm.ShowDialog()
+
+$script:MainForm.Add_Shown({
+    Update-MainStandardStatus -Quiet
+})
+try {
+    [void]$script:MainForm.ShowDialog()
+} finally {
+    $refreshToolTip.Dispose()
+    $moveForm.Dispose()
+    $script:MainForm.Dispose()
+}
