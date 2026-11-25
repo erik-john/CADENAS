@@ -1,4 +1,4 @@
-﻿# CADENAS NX File Organizer V3.2.10
+﻿# CADENAS NX File Organizer V3.2.12
 # Metadata-driven organizer. Uses PartInfo metadata (NB + ProjectPath) to map
 # flat Members .prt files to the exact CADENAS catalog component folder.
 # Safe behavior: preview/log matching first; never overwrite; ambiguous matches are skipped.
@@ -175,14 +175,14 @@ function Get-CatalogMappings {
 
 # Main window
 $script:MainForm = New-Object System.Windows.Forms.Form
-$script:MainForm.Text = 'CADENAS Organizer V3.2.10 - Standard Status Viewer'
+$script:MainForm.Text = 'CADENAS Organizer V3.2.12 - Standard Status Viewer'
 $script:MainForm.Size = New-Object System.Drawing.Size(900, 710)
 $script:MainForm.MinimumSize = New-Object System.Drawing.Size(900, 710)
 $script:MainForm.StartPosition = 'CenterScreen'
 $script:MainForm.Font = New-Object System.Drawing.Font('Segoe UI', 9)
 
 $title = New-Object System.Windows.Forms.Label
-$title.Text = 'CADENAS NX File Organizer V3.2.10'
+$title.Text = 'CADENAS NX File Organizer V3.2.12'
 $title.Font = New-Object System.Drawing.Font('Segoe UI', 15, [System.Drawing.FontStyle]::Bold)
 $title.Location = New-Object System.Drawing.Point(20, 16)
 $title.Size = New-Object System.Drawing.Size(800, 32)
@@ -225,7 +225,7 @@ $tgtBrowse.Anchor = 'Top,Right'
 $script:MainForm.Controls.Add($tgtBrowse)
 
 $hint = New-Object System.Windows.Forms.Label
-$hint.Text = 'V3.2.10: Standard Status counts catalog component images, including components without local folders.'
+$hint.Text = 'V3.2.12: Standard Status counts catalog component images, including components without local folders.'
 $hint.ForeColor = [System.Drawing.Color]::DimGray
 $hint.Location = New-Object System.Drawing.Point(22, 184)
 $hint.Size = New-Object System.Drawing.Size(840, 22)
@@ -459,6 +459,8 @@ function Get-StandardCatalogInventory {
         } elseif ($extensions -contains $entry.Extension) {
             $name = [System.IO.Path]::GetFileNameWithoutExtension($entry.Name)
             if ([string]::IsNullOrWhiteSpace($name)) { continue }
+            # Catalog copyright artwork is not a component preview.
+            if ($name -ieq 'copyright') { continue }
             if (-not $imageCounts.ContainsKey($name)) { $imageCounts[$name] = 0 }
             $imageCounts[$name]++
         }
@@ -556,9 +558,27 @@ function Add-StandardTreeNode {
     $node = New-Object System.Windows.Forms.TreeNode($nodeText)
     $node.Name = $Item.FullPath
     $node.ForeColor = $nodeColor
+    # The inventory already aggregates counts across every descendant.
+    $node.Tag = [bool](($Item.Counts.Incompleted -gt 0) -or ($Item.Counts.Missing -gt 0))
     [void]$ParentNode.Nodes.Add($node)
     foreach ($child in $Item.Children) {
         Add-StandardTreeNode -ParentNode $node -Item $child
+    }
+}
+
+# Expand the selected category itself, then reveal only unfinished branches.
+# Keep completed and empty subfolders available for manual expansion.
+function Expand-UnfinishedStandardBranches {
+    param([System.Windows.Forms.TreeNode]$Node)
+
+    $Node.Expand()
+    foreach ($childNode in $Node.Nodes) {
+        if ($childNode.Nodes.Count -eq 0) { continue }
+        if ($childNode.Tag -eq $true) {
+            Expand-UnfinishedStandardBranches -Node $childNode
+        } else {
+            $childNode.Collapse()
+        }
     }
 }
 
@@ -728,7 +748,7 @@ $standardStatusButton.Add_Click({
         $percentLabel.Text = "Completion: $percentage%"
         $partsLabel.Text = "$($counts.Completed) in $($counts.Total) parts"
         # Find the exact TreeView node for the current Target Category by its
-        # full directory path. Then expand the complete subtree beneath it.
+        # full directory path. Then expand only unfinished branches beneath it.
         # This avoids relying on relative path traversal or displayed node text.
         $tree.CollapseAll()
         $targetCategoryPath = $targetText.Text.Trim()
@@ -760,7 +780,7 @@ $standardStatusButton.Add_Click({
         }
 
         if ($null -ne $targetNode) {
-            $targetNode.ExpandAll()
+            Expand-UnfinishedStandardBranches -Node $targetNode
             $tree.SelectedNode = $targetNode
             $targetNode.EnsureVisible()
         } else {
@@ -772,7 +792,7 @@ $standardStatusButton.Add_Click({
         # expanded branch reliably on first display.
         $viewer.Add_Shown({
             if ($null -ne $targetNode) {
-                $targetNode.ExpandAll()
+                Expand-UnfinishedStandardBranches -Node $targetNode
                 $tree.SelectedNode = $targetNode
                 $targetNode.EnsureVisible()
             } else {
@@ -908,5 +928,5 @@ $processButton.Add_Click({
         $processButton.Enabled = $true
     }
 })
-$script:MainForm.Add_Shown({ Write-Log 'Ready. V3.2.10 counts component preview images (Completed, Incompleted, Missing) and groups CADENAS split files (_PARTn and -n) with their base component before matching PartInfo NB metadata.' 'Blue' })
+$script:MainForm.Add_Shown({ Write-Log 'Ready. V3.2.12 counts component preview images (Completed, Incompleted, Missing) and groups CADENAS split files (_PARTn and -n) with their base component before matching PartInfo NB metadata.' 'Blue' })
 [void]$script:MainForm.ShowDialog()
